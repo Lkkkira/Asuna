@@ -140,3 +140,7 @@ cython_debug/
 # IDE/Editor
 .vscode
 .idea
+# ASUNA personal data and local runtime
+data/
+__pycache__/
+*.pyc
