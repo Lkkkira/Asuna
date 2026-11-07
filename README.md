@@ -27,12 +27,32 @@ The window title is **ASUNA — Repo edition**. This edition uses Python's stand
 - An offline dictionary with spelling suggestions, adapted from the original project.
 - File-name search inside a folder you choose, and text / Word document attachments.
 - Local notes, tasks, in-app reminders, and screenshot saving.
+- Explicit personal memory, recurring reminders/tasks, and a daily overview.
 
 Try `help`, `open youtube`, `define: algorithm`, `search youtube: Python basics`, `choose search folder`, or `add task: finish assignment`.
 
 You can also say **“Find my physics notes in Downloads,” “Remind me to study in half an hour,” “Open YouTube and search for Python tutorials,”** or **“Read this document and make five practice questions.”** ASUNA can plan up to six supported actions per request. It asks for missing reminder details; document selection opens a file picker. Known command syntax still works without a model connection.
 
 Use **Show / hide activity** or type **“show your work”** to inspect progress. Select a request or individual action to see its result. Work history is for the current app session; saved to-do tasks and reminders remain separate. Reopen the app after updating its files.
+
+## Personal memory and routines
+
+Use **My memory** and **My day** in the toolbar, or ask naturally:
+
+- “Remember that I prefer short answers.”
+- “What do you remember about me?”
+- “Remind me every day at 8 PM to stretch.”
+- “Add a task every Monday at 9 AM to review expenses.”
+- “Pause my daily stretch reminder.”
+- “What do I have to do today?”
+
+Memory is saved only when you explicitly ask; ordinary conversation and documents are not automatically converted into memories. Relevant saved facts/preferences are supplied to subsequent local-model replies, including after restart. `save note:` remains a separate notes feature. Existing notes are not automatically imported into personal memory.
+
+Exact offline commands: `remember: I prefer short answers`, `show memories`, `update memory 1: I prefer detailed answers`, `forget memory 1`, and `restore memory 1`. Forgetting archives a memory so you can undo it. It also stops older conversation context from being sent to the model. The earlier chat and archived record still exist locally; this is not permanent erasure.
+
+Routines support daily, weekdays, or a specific weekday, at an explicit 24-hour clock time. Try `daily reminder at 20:00: stretch` or `monday task at 09:00: review expenses`. Manage them with `show routines`, `pause routine 1`, and `resume routine 1`. Reminder routines notify you; task routines add a new ordinary to-do when due. Both use your PC's local clock and need ASUNA running. Missed occurrences catch up once on restart/resume and skip the backlog. Paused routines resume at their next future time.
+
+`daily overview` lists open tasks (including undated tasks), one-time reminders due today/overdue, and routine occurrences still due today/overdue. This version does not run recurring app actions, hourly/monthly schedules, or reminders while ASUNA is closed.
 
 See [the usage guide](ASUNA-README.md) for supported commands and limitations. Reminders require the app to stay open; overdue reminders are delivered on restart. Browser searches require internet and open results for you to read. Voice, face recognition, email, OCR, video downloading, and weather/news APIs are not connected to the ASUNA launcher yet.
 
@@ -49,6 +69,7 @@ python tests/verify_asuna.py
 python tests/verify_repo.py
 python tests/verify_youtube.py
 python tests/verify_natural_actions.py
+python tests/verify_personal.py
 ```
 
 Checks use temporary data and mock app/browser launching and model responses. They cover organizer persistence, scoped file opening, document reading, background UI results, dictionary lookup, command routing, plan validation, follow-up clarification, partial failures, and the work panel layout. They do not test a live screenshot, a real browser window, or model accuracy. Natural-language routing requires a running Ollama model; exact commands remain available when it is offline.

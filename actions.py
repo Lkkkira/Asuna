@@ -20,7 +20,10 @@ Use “show your work” to inspect each action and its result, even while busy.
 • Search YouTube: a topic / Wikipedia: a topic / Location: a place
 • Define: a word (bundled offline dictionary with spelling suggestions)
 • Take a screenshot / What time is it / What is today's date
-• Remember that: a note / What do you remember
+• Remember: a personal fact / Show memories / Update memory 1: a correction
+• Forget memory 1 / Restore memory 1 (forget archives it locally)
+• Daily reminder at 20:00: stretch / Monday task at 09:00: review expenses
+• Show routines / Pause routine 1 / Resume routine 1 / Daily overview
 • Open calculator, notepad, paint, explorer, task manager, settings, or browser
 • Open downloads, documents, desktop, or a website (open https://example.com)
 • Search web for: your question (opens your browser)
@@ -33,6 +36,8 @@ Use “show your work” to inspect each action and its result, even while busy.
 • Switch to fast / Switch to deep / Show activity / Hide activity
 
 Reminders appear here while ASUNA is open. Overdue reminders appear on restart.
+Personal memory is saved only when you ask. Routines use your PC's local clock.
+Missed routine occurrences catch up once, rather than replaying every missed day.
 File search stays inside your chosen folder and returns up to 30 matches.
 Document reading includes up to 10,000 characters. No PDF reader yet.'''
 
@@ -64,6 +69,21 @@ class Actions:
         self.state['search_folder'] = str(Path(folder).resolve())
         self.save()
         self.results = []
+
+    def add_routine_task(self, routine, now=None):
+        key = str(routine['id']) + ':' + routine['next_due']
+        existing = next((t for t in self.state['tasks'] if t.get('routine_key') == key), None)
+        if existing:
+            return existing
+        task = {'id': max([t['id'] for t in self.state['tasks']], default=0) + 1,
+                'text': routine['text'], 'done': False, 'routine_key': key}
+        self.state['tasks'].append(task)
+        try:
+            self.save()
+        except OSError:
+            self.state['tasks'].remove(task)
+            raise
+        return task
 
     def due(self):
         due = [r for r in self.state['reminders'] if not r['delivered'] and datetime.fromisoformat(r['due']) <= datetime.now()]

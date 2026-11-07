@@ -35,12 +35,24 @@ Use Show / hide activity to view requests and their individual actions, status, 
 | `show tasks` / `complete task 1` | View or complete tasks |
 | `remind me in 20 minutes to stretch` | Schedule an in-app reminder |
 | `show reminders` / `cancel reminder 1` | Manage reminders |
-| `remember that: my exam is Friday` | Save a local note |
-| `what do you remember` / `show notes` | Read saved notes |
+| `save note: my exam is Friday` | Save an ordinary local note |
+| `remember: I prefer short answers` | Save personal memory for future replies |
+| `show memories` / `what do you remember` | Read personal memories |
+| `update memory 1: a correction` | Update an active personal memory |
+| `forget memory 1` / `restore memory 1` | Archive or restore personal memory |
+| `show notes` | Read ordinary saved notes |
+| `daily reminder at 20:00: stretch` | Save a daily reminder routine |
+| `monday task at 09:00: review expenses` | Save a weekly task routine |
+| `show routines` / `pause routine 1` / `resume routine 1` | Manage recurring routines |
+| `daily overview` | View open tasks and remaining reminders/routines due today |
 | `switch to deep` / `switch to fast` | Change model without clearing the conversation |
 | `show your work` / `hide activity` | Show or hide action status |
 
 Reminders require ASUNA to stay open. They appear in the chat, sound a bell, and raise the window. While a reply/action is in progress, delivery waits until it finishes. Overdue reminders are delivered on restart. No Windows scheduled tasks or external automation service is used.
+
+Personal memories and recurring routines are saved in data/personal.json. Memory is explicit: ordinary chat/documents are not automatically remembered. The most recent 20 active memories (up to 300 characters each) are supplied as reference data to local replies. Updating/archiving a memory stops older chat context from being supplied, to avoid reintroducing the old fact. Archived memories remain on disk and can be restored; prior visible chat remains on disk too. New conversation clears chat context but keeps active memories and routines.
+
+Routines use your PC's local time, with daily, weekdays, or weekly schedules. Missed occurrences produce one catch-up on restart rather than a backlog; task occurrence IDs prevent duplicate to-dos after retry/restart. Pause stops future deliveries; resume schedules the next future occurrence. Both reminder routines and to-do routines require ASUNA to be running. New routines first trigger at the next future time.
 
 The background worker keeps the window responsive. One request runs at a time. Closing the app stops its worker; minimizing keeps it running. Activity shows actual actions and status, not hidden model reasoning.
 

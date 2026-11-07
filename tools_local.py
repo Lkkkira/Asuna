@@ -29,11 +29,29 @@ def known_folder(name):
 
 
 class ToolExecutor:
-    def __init__(self, actions, repo, choose):
+    def __init__(self, actions, repo, choose, personal=None, context_count=0):
         self.actions, self.repo, self.choose = actions, repo, choose
+        self.personal = personal
+        self.context_count = context_count
 
     def execute(self, s):
         tool, text, number = s['tool'], s['text'], s['number']
+        if tool in ('save_memory', 'update_memory'):
+            return ToolResult(self.personal.save_memory(text, number if tool == 'update_memory' else 0,
+                                                       context_floor=self.context_count + 2))
+        if tool in ('forget_memory', 'restore_memory'):
+            return ToolResult(self.personal.archive_memory(number, restore=tool == 'restore_memory',
+                                                          context_floor=self.context_count + 2))
+        if tool == 'show_memories':
+            return ToolResult(self.personal.show_memories())
+        if tool in ('add_routine', 'update_routine'):
+            return ToolResult(self.personal.add_routine(text, s['repeat'], number if tool == 'update_routine' else 0))
+        if tool in ('pause_routine', 'resume_routine'):
+            return ToolResult(self.personal.pause_routine(number, resume=tool == 'resume_routine'))
+        if tool == 'show_routines':
+            return ToolResult(self.personal.show_routines())
+        if tool == 'daily_overview':
+            return ToolResult(self.personal.overview(self.actions))
         if tool == 'find_files':
             folder = s['folder']
             if folder in ('downloads', 'documents', 'desktop'):
