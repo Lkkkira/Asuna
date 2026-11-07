@@ -12,6 +12,10 @@ Uses your existing Python 3 installation, tkinter, and the standard library. **D
 
 ## Commands to try
 
+Natural requests are now supported using your selected Fast/Deep model. For example, “Find my physics notes in Downloads,” “Remind me to study in half an hour,” or “Read this document and make five practice questions.” Known exact commands below bypass model planning and continue to work offline. Unsupported capabilities prompt a clarification instead of running arbitrary commands.
+
+Use Show / hide activity to view requests and their individual actions, status, and result details. The panel can be opened while ASUNA is busy, including by typing “show your work” and pressing Enter. Work records last for this app session. Plans are validated before execution, contain at most six supported actions, run in order, and stop after a failure or cancellation. Earlier completed actions are not undone. No automatic retries of side effects occur.
+
 | Request | Result |
 | --- | --- |
 | `help` | Show all supported commands |
@@ -50,6 +54,7 @@ Recent 20 conversation messages are supplied to either model, within the model's
 - Reused website opening, YouTube/Maps searches, time, remember/recall, and dictionary matching logic plus the original data.json dictionary.
 - Replaced fixed Chrome/music/editor paths with the default browser and Windows app commands.
 - Added the working ASUNA interface, Fast/Deep Ollama chat, background workers, local tasks, scoped file search and document reading.
+- Added structured natural-language planning, follow-up clarification, and a status/results work view. Model planning receives request context, not attached document text. The answer-writing stage cannot execute actions.
 - Replaced the placeholder screenshot destination with timestamped PNGs using built-in Windows screen capture.
 - The original voice/Google speech, face authentication, weather/news API, SMTP email, forced shutdown, downloader and OCR paths are not wired into the ASUNA launcher. They require separate adaptation; the upstream scripts remain for reference.
 

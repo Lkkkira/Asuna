@@ -12,6 +12,10 @@ from pathlib import Path
 from urllib.parse import quote_plus, urlparse
 
 HELP = '''Here’s what I can do:
+Ask naturally, for example: “Find my physics notes in Downloads” or
+“Remind me to study in half an hour.” I’ll ask if details are missing.
+Use “show your work” to inspect each action and its result, even while busy.
+
 • Open YouTube, Google, Amazon, Stack Overflow (open stackoverflow), or GitHub
 • Search YouTube: a topic / Wikipedia: a topic / Location: a place
 • Define: a word (bundled offline dictionary with spelling suggestions)
@@ -84,7 +88,8 @@ class Actions:
                 os.startfile('ms-settings:')
                 return 'Opened Windows Settings.'
             if name in ('browser', 'web browser'):
-                webbrowser.open('https://www.google.com')
+                if not webbrowser.open('https://www.google.com'):
+                    raise OSError('Windows could not open your default browser.')
                 return 'Requested your default browser.'
             if name in ('downloads', 'documents', 'desktop'):
                 # Use Windows known folders, including redirected Documents/Desktop.
@@ -105,11 +110,13 @@ class Actions:
                 os.startfile(path)
                 return 'Opened ' + name + '.'
             if target.startswith(('https://', 'http://')) and urlparse(target).hostname:
-                webbrowser.open(target)
+                if not webbrowser.open(target):
+                    raise OSError('Windows could not open your default browser.')
                 return 'Requested your browser to open ' + target
         match = re.fullmatch(r'search (?:the )?web for\s*:?\s*(.+)', raw, re.I)
         if match:
-            webbrowser.open('https://www.google.com/search?q=' + quote_plus(match[1]))
+            if not webbrowser.open('https://www.google.com/search?q=' + quote_plus(match[1])):
+                raise OSError('Windows could not open your default browser.')
             return 'Opened web search in your browser. I have not read the results.'
         match = re.fullmatch(r'(?:find file|search files)\s*:\s*(.+)', raw, re.I)
         if match:

@@ -29,7 +29,8 @@ class Jarvis:
                  'google': 'https://google.com', 'stackoverflow': 'https://stackoverflow.com',
                  'github': 'https://github.com'}
         if key.startswith('open ') and key[5:] in sites:
-            webbrowser.open_new_tab(sites[key[5:]])
+            if not webbrowser.open_new_tab(sites[key[5:]]):
+                raise OSError('Windows could not open your default browser.')
             return 'Requested your default browser to open ' + key[5:] + '.'
         if key in ('what time is it', 'the time', 'time', 'tell me the time'):
             return 'The time is ' + datetime.now().strftime('%I:%M %p') + '.'
@@ -71,7 +72,8 @@ class Jarvis:
 
     @staticmethod
     def open_search(base, term, site):
-        webbrowser.open_new_tab(base + quote_plus(term))
+        if not webbrowser.open_new_tab(base + quote_plus(term)):
+            raise OSError('Windows could not open your default browser.')
         return f'Opened {site} search for “{term}” in your browser. I have not read the results.'
 
     def translate(self, word):

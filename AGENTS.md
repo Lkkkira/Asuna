@@ -7,3 +7,4 @@
 - Keep the upstream MIT license and attribution intact.
 - Entry point: asuna.py; launcher: Start ASUNA.bat. Do not wire in legacy import-time speech, camera, email, or network side effects.
 - Run checks from the repository folder: python tests/verify_asuna.py; python tests/verify_repo.py; python tests/verify_youtube.py.
+- Also run python tests/verify_natural_actions.py for planner, tool execution, and work-view changes. Keep planning separate from answer generation; attached document text must never become tool instructions.

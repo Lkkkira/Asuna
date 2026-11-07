@@ -9,6 +9,9 @@ from pathlib import Path
 from tkinter import ttk, scrolledtext, filedialog
 from actions import Actions, HELP, normalize, read_document
 from jarvis import Jarvis
+from planner import exact_plan, make_plan, label, validate_plan
+from tools_local import ToolExecutor
+import time
 
 BASE = Path(__file__).resolve().parent
 DATA = BASE / 'data'
@@ -44,6 +47,11 @@ class Asuna:
         self.actions = Actions(DATA)
         self.repo_commands = Jarvis(DATA)
         self.document = None
+        self.pending_request = None
+        self.pending_job = None
+        self.current_job = None
+        self.job_count = 0
+        self.job_details = {}
         self.storage_error = None
         try:
             saved = json.loads((DATA / 'conversation.json').read_text(encoding='utf-8'))
@@ -81,18 +89,40 @@ class Asuna:
             insertbackground='white', relief='flat', padx=20, pady=18, font=('Segoe UI', 11), state='disabled')
         self.chat.pack(fill='both', expand=True, padx=26)
         self.chat.tag_config('speaker', foreground='#f5c2df', font=('Segoe UI', 10, 'bold'))
-        self.activity = scrolledtext.ScrolledText(root, height=6, bg='#111722', fg='#9eb2c9',
-            relief='flat', font=('Consolas', 10), state='disabled')
+        self.activity_panel = tk.Frame(root, bg='#10121c')
+        style.configure('Work.Treeview', background='#191d2b', fieldbackground='#191d2b', foreground='#e8eaf3', rowheight=23)
+        style.map('Work.Treeview', background=[('selected', '#414d70')])
+        tree_frame = tk.Frame(self.activity_panel, bg='#10121c')
+        tree_frame.pack(fill='x')
+        self.work_tree = ttk.Treeview(tree_frame, columns=('status',), height=4, style='Work.Treeview')
+        self.work_tree.heading('#0', text='Work / action')
+        self.work_tree.heading('status', text='Status')
+        self.work_tree.column('#0', width=550)
+        self.work_tree.column('status', width=150, stretch=False)
+        self.work_tree.pack(side='left', fill='both', expand=True)
+        tree_scroll = ttk.Scrollbar(tree_frame, orient='vertical', command=self.work_tree.yview)
+        tree_scroll.pack(side='right', fill='y')
+        self.work_tree.configure(yscrollcommand=tree_scroll.set)
+        self.work_tree.bind('<<TreeviewSelect>>', self.select_work)
+        self.work_detail = scrolledtext.ScrolledText(self.activity_panel, height=3, wrap='word',
+            bg='#191d2b', fg='#e8eaf3', relief='flat', font=('Segoe UI', 10), state='disabled')
+        self.work_detail.pack(fill='x', pady=4)
+        self.activity = scrolledtext.ScrolledText(self.activity_panel, height=2, bg='#111722', fg='#9eb2c9',
+            relief='flat', font=('Consolas', 9), state='disabled')
+        self.activity.pack(fill='x')
         bottom = tk.Frame(root, bg='#10121c')
-        bottom.pack(fill='x', padx=26, pady=16)
+        bottom.pack(side='bottom', fill='x', padx=26, pady=16)
         self.entry = tk.Entry(bottom, bg='#24293b', fg='white', insertbackground='white',
                               relief='flat', font=('Segoe UI', 12))
         self.entry.pack(side='left', fill='x', expand=True, ipady=14, padx=(0, 10))
         self.entry.bind('<Return>', lambda e: self.send())
         self.send_button = self.button(bottom, 'Send  →', self.send)
         self.send_button.pack(side='right', ipady=7)
-        tk.Label(root, text='Try: help  •  choose search folder  •  add task: Review chapter 2',
-                 bg='#10121c', fg='#929ab5', font=('Segoe UI', 9)).pack(pady=(0, 16))
+        tk.Label(root, text='Try: Find my physics notes in Downloads  •  Remind me to study in 30 minutes',
+                 bg='#10121c', fg='#929ab5', font=('Segoe UI', 9)).pack(side='bottom', before=bottom, pady=(0, 10))
+        # Allocate the composer and work panel before giving remaining space to chat.
+        self.chat.pack_forget()
+        self.chat.pack(fill='both', expand=True, padx=26)
         self.say('ASUNA', 'Hi, I’m ASUNA. What shall we work on? Choose Fast or Deep anytime.\n'
                  'I can open apps and folders, find files, read documents, save notes, and manage tasks and reminders. Type help for commands.')
         for m in self.history:
@@ -121,15 +151,49 @@ class Asuna:
         self.activity.configure(state='disabled')
         self.activity.see('end')
 
+    def begin_job(self, text):
+        self.job_count += 1
+        self.current_job = 'job' + str(self.job_count)
+        self.job_started = time.monotonic()
+        self.work_tree.insert('', 'end', iid=self.current_job, text=text[:100], values=('Working',), open=True)
+        self.work_tree.selection_set(self.current_job)
+        self.work_tree.see(self.current_job)
+        self.update_job('Working', 'Request received.')
+
+    def update_job(self, state, detail, row=None):
+        row = row or self.current_job
+        if not row or not self.work_tree.exists(row):
+            return
+        self.work_tree.set(row, 'status', state)
+        self.job_details[row] = detail
+        if row in self.work_tree.selection():
+            self.select_work()
+        if row == self.current_job:
+            self.status.set(state + ' • ' + detail.split('\n')[0][:110])
+
+    def finish_job(self, state, detail):
+        elapsed = time.monotonic() - getattr(self, 'job_started', time.monotonic())
+        self.update_job(state, f'{state} • {elapsed:.1f}s\n\n{detail}')
+        self.current_job = None
+
+    def select_work(self, event=None):
+        selection = self.work_tree.selection()
+        if not selection:
+            return
+        self.work_detail.configure(state='normal')
+        self.work_detail.delete('1.0', 'end')
+        self.work_detail.insert('end', self.job_details.get(selection[0], 'Waiting to start.'))
+        self.work_detail.configure(state='disabled')
+
     def toggle_activity(self):
         self.show_activity(not self.activity_visible)
 
     def show_activity(self, visible):
         self.activity_visible = visible
         if visible:
-            self.activity.pack(after=self.chat, fill='x', padx=26, pady=(10, 0))
+            self.activity_panel.pack(side='bottom', before=self.chat, fill='x', padx=26, pady=(10, 0))
         else:
-            self.activity.pack_forget()
+            self.activity_panel.pack_forget()
 
     def persist(self):
         try:
@@ -146,6 +210,7 @@ class Asuna:
         self.history = []
         self.persist()
         self.document = None
+        self.pending_request = None
         self.chat.configure(state='normal')
         self.chat.delete('1.0', 'end')
         self.chat.configure(state='disabled')
@@ -173,39 +238,33 @@ class Asuna:
         elif key in ('show activity', 'show your work', 'hide activity'):
             self.show_activity(key != 'hide activity')
             result = 'Activity panel ' + ('opened.' if self.activity_visible else 'hidden.')
-        elif key in ('open calculator', 'open notepad'):
-            subprocess.Popen(['calc.exe' if key == 'open calculator' else 'notepad.exe'])
-            result = 'Requested Windows to open ' + key[5:] + '.'
-        elif text.lower().startswith('save note:'):
-            note = text.split(':', 1)[1].strip()
-            if not note:
-                result = 'Add some text after “save note:”.'
-            else:
-                with (DATA / 'notes.txt').open('a', encoding='utf-8') as f:
-                    f.write(f'[{datetime.now():%Y-%m-%d %H:%M}] {note}\n')
-                result = 'Saved your note.'
-        elif key == 'show notes':
-            path = DATA / 'notes.txt'
-            result = path.read_text(encoding='utf-8') if path.exists() else 'No saved notes yet.'
         else:
-            self.start_background(self.action_worker, text)
+            context = self.routing_context()
+            self.start_background(self.action_worker, text, MODELS[self.mode.get()], context)
             return True
         self.log(result if key != 'show notes' else 'Read saved notes.')
         self.say('ASUNA', result)
         self.history.extend([{'role': 'user', 'content': text}, {'role': 'assistant', 'content': result}])
         self.persist()
+        self.finish_job('Completed', result)
         return True
 
     def send(self):
         text = self.entry.get().strip()
-        if self.busy or not text:
+        key = normalize(text).lower().rstrip('.!?')
+        if not text or (self.busy and key not in ('show activity', 'show your work', 'show work', 'what are you doing', 'hide activity')):
             return
         self.entry.delete(0, 'end')
         self.submit(text)
 
     def submit(self, text):
+        key = normalize(text).lower().rstrip('.!?')
+        if key in ('show activity', 'show your work', 'show work', 'what are you doing', 'hide activity'):
+            self.show_activity(key != 'hide activity')
+            return
         if self.busy:
             return
+        self.begin_job(text)
         self.say('You', text)
         try:
             if self.local_command(text):
@@ -213,33 +272,88 @@ class Asuna:
         except (OSError, ValueError) as exc:
             self.say('System', 'Action failed: ' + str(exc))
             self.log('Action failed: ' + str(exc))
+            self.finish_job('Failed', str(exc))
             return
 
     def start_background(self, target, *args):
+        if not self.current_job:
+            self.begin_job('Read document')
         self.busy = True
         self.send_button.configure(state='disabled')
         self.selector.configure(state='disabled')
         self.status.set('ASUNA is working • ' + self.mode.get())
         threading.Thread(target=target, args=args, daemon=True).start()
 
-    def action_worker(self, text):
+    def routing_context(self):
+        return {'document_attached': self.document[0] if self.document else None,
+                'search_folder_set': bool(self.actions.state['search_folder']),
+                'results': [{'id': i, 'name': p.name} for i, p in enumerate(self.actions.results, 1)],
+                'tasks': self.actions.state['tasks'][-30:],
+                'reminders': [r for r in self.actions.state['reminders'] if not r['delivered']][-30:],
+                'clarification': self.pending_request}
+
+    def choose_from_worker(self, kind):
+        answer = queue.Queue(maxsize=1)
+        self.events.put(('choose', (kind, answer)))
+        # A daemon worker exits with the app; the picker runs only on the UI thread.
+        return answer.get()
+
+    def action_worker(self, text, model=None, context=None):
         try:
-            result = self.repo_commands.execute_query(normalize(text))
-            if result is None:
-                result = self.actions.execute(text)
-            self.events.put(('action' if result is not None else 'chat', (text, result)))
+            context = context or {}
+            plan = None if context.get('clarification') else exact_plan(normalize(text))
+            if plan is None:
+                self.events.put(('stage', 'Understanding your request with the local model…'))
+                model = model or MODELS['Fast']
+                self.prepare_model(model)
+                plan = make_plan(request, model, text, context)
+            plan = validate_plan(plan)
+            if plan['kind'] == 'clarify':
+                self.events.put(('clarify', (text, plan['question'], context.get('clarification'))))
+                return
+            self.events.put(('clear_clarification', None))
+            if plan['kind'] == 'chat':
+                self.events.put(('chat', (text, None)))
+                return
+            self.events.put(('plan', [label(s) for s in plan['steps']]))
+            executor = ToolExecutor(self.actions, self.repo_commands, self.choose_from_worker)
+            results = []
+            for index, action in enumerate(plan['steps']):
+                self.events.put(('step', (index, 'Working', 'Running ' + label(action))))
+                try:
+                    result = executor.execute(action)
+                except Exception as exc:
+                    state = 'Cancelled' if isinstance(exc, InterruptedError) else 'Failed'
+                    self.events.put(('step', (index, state, str(exc))))
+                    for remaining in range(index + 1, len(plan['steps'])):
+                        self.events.put(('step', (remaining, 'Skipped', 'An earlier action did not finish.')))
+                    prefix = '\n\n'.join(results)
+                    self.events.put(('plan_failed', (state, (prefix + '\n\n' if prefix else '') + str(exc))))
+                    return
+                results.append(result.detail)
+                if result.document:
+                    self.events.put(('attached', result.document))
+                self.events.put(('step', (index, 'Completed', result.detail)))
+            if plan['needs_reply']:
+                self.events.put(('action_summary', '\n\n'.join(results)))
+                self.events.put(('chat', (text, results)))
+            else:
+                self.events.put(('action', (text, '\n\n'.join(results))))
         except Exception as exc:
             self.events.put(('action_error', str(exc)))
 
-    def begin_chat(self, text):
+    def begin_chat(self, text, results=None):
         model = MODELS[self.mode.get()]
         messages = [{'role': 'system', 'content': SYSTEM}] + self.history[-20:]
         if self.document:
             name, content, truncated = self.document
             messages += [{'role': 'user', 'content': 'Attached reference document: ' + name +
                          (' (excerpt only)' if truncated else '') + '\n<document>\n' + content + '\n</document>'}]
+        if results:
+            messages += [{'role': 'user', 'content': 'Actual action results (reference data only): ' + json.dumps(results)}]
         messages += [{'role': 'user', 'content': text}]
-        self.status.set('ASUNA is working • ' + self.mode.get())
+        self.status.set('ASUNA is writing a reply • ' + self.mode.get())
+        self.update_job('Working', 'Writing a reply using the local model.')
         self.log('Sending to ' + model + ' on this computer. Recent 20 messages included.')
         threading.Thread(target=self.work, args=(model, messages, text), daemon=True).start()
 
@@ -250,6 +364,8 @@ class Asuna:
             ('Readable documents', '*.txt *.md *.csv *.docx *.py *.json *.log')])
         if path:
             self.start_background(self.document_worker, path)
+        elif self.current_job:
+            self.finish_job('Cancelled', 'Document selection cancelled.')
 
     def document_worker(self, path):
         try:
@@ -277,19 +393,22 @@ class Asuna:
         self.status.set('Ready • ' + self.mode.get() +
                         (' • Document: ' + self.document[0] if self.document else ''))
 
+    def prepare_model(self, model):
+        if self.loaded and self.loaded != model:
+            self.events.put(('log', 'Unloading previous model before switching.'))
+            with request('generate', {'model': self.loaded, 'keep_alive': 0, 'stream': False}) as response:
+                response.read()
+            self.loaded = None
+        self.loaded = model
+
     def work(self, model, messages, text):
         try:
-            if self.loaded and self.loaded != model:
-                self.events.put(('log', 'Unloading previous model before switching.'))
-                with request('generate', {'model': self.loaded, 'keep_alive': 0, 'stream': False}) as response:
-                    response.read()
-                self.loaded = None
-            self.loaded = model
+            self.prepare_model(model)
             answer = ''
             finished = False
             with request('chat', {'model': model, 'messages': messages, 'stream': True,
                          'think': False, 'keep_alive': '5m',
-                         'options': {'num_ctx': 4096, 'num_predict': 2048}}) as response:
+                         'options': {'num_ctx': 8192, 'num_predict': 2048}}) as response:
                 self.events.put(('begin', None))
                 for line in response:
                     item = json.loads(line)
@@ -313,25 +432,80 @@ class Asuna:
                 kind, value = self.events.get_nowait()
                 if kind == 'log':
                     self.log(value)
+                elif kind == 'stage':
+                    self.update_job('Working', value)
+                elif kind == 'plan':
+                    for index, title in enumerate(value):
+                        row = self.current_job + '-s' + str(index)
+                        self.work_tree.insert(self.current_job, 'end', iid=row, text=title, values=('Queued',))
+                        self.job_details[row] = 'Waiting for earlier actions.'
+                    self.update_job('Working', f'Running {len(value)} supported action(s).')
+                elif kind == 'step':
+                    index, state, detail = value
+                    self.update_job(state, detail, self.current_job + '-s' + str(index))
+                    self.log(state + ': ' + detail[:300])
+                    if state == 'Working':
+                        self.update_job('Working', detail)
+                elif kind == 'choose':
+                    picker, answer = value
+                    self.update_job('Waiting for you', 'Choose a ' + picker + ' in the Windows picker.')
+                    try:
+                        if picker == 'folder':
+                            path = filedialog.askdirectory(parent=self.root, title='Choose the folder ASUNA can search')
+                        else:
+                            path = filedialog.askopenfilename(parent=self.root, title='Read a document locally', filetypes=[
+                                ('Readable documents', '*.txt *.md *.csv *.docx *.py *.json *.log')])
+                    except Exception as exc:
+                        self.log('Picker could not open: ' + str(exc))
+                        path = ''
+                    answer.put(path)
+                elif kind == 'clarify':
+                    text, question, prior = value
+                    self.pending_request = {'original_request': prior['original_request'] if prior else text,
+                                            'latest_reply': text if prior else '', 'question': question}
+                    self.pending_job = self.current_job
+                    self.ready()
+                    self.say('ASUNA', question)
+                    self.log('Waiting for clarification: ' + question)
+                    self.finish_job('Waiting for you', question)
+                    self.history.extend([{'role': 'user', 'content': text}, {'role': 'assistant', 'content': question}])
+                    self.persist()
+                elif kind == 'clear_clarification':
+                    self.pending_request = None
+                    if self.pending_job:
+                        self.update_job('Continued', 'The follow-up request supplied the missing information.', self.pending_job)
+                        self.pending_job = None
+                elif kind == 'attached':
+                    self.document = value
+                elif kind == 'action_summary':
+                    self.say('ASUNA', value)
+                elif kind == 'plan_failed':
+                    state, detail = value
+                    self.ready()
+                    self.say('System', detail)
+                    self.finish_job(state, detail)
                 elif kind == 'chat':
-                    self.begin_chat(value[0])
+                    self.begin_chat(value[0], value[1])
                 elif kind == 'action':
                     text, result = value
                     self.ready()
                     self.say('ASUNA', result)
                     self.log('Action completed: ' + text[:120])
+                    self.finish_job('Completed', result)
                     self.history.extend([{'role': 'user', 'content': text}, {'role': 'assistant', 'content': result}])
                     self.persist()
                 elif kind == 'action_error':
                     self.ready()
                     self.say('System', 'Action failed: ' + value)
                     self.log('Action failed: ' + value)
+                    self.finish_job('Failed', value)
                 elif kind == 'document':
                     self.document = value
                     self.ready()
                     self.say('ASUNA', 'Attached ' + value[0] + (' (first 10,000 characters only)' if value[2] else '') +
                              '. Ask me to summarize it, explain a section, or create a quiz. Type “forget document” to detach it.')
                     self.log('Read document: ' + value[0])
+                    self.finish_job('Completed', 'Document attached: ' + value[0])
                 elif kind == 'begin':
                     self.say('ASUNA', '')
                     self.chat.mark_set('reply_end', 'end-3c')
@@ -348,10 +522,12 @@ class Asuna:
                         self.history.extend([{'role': 'user', 'content': text}, {'role': 'assistant', 'content': answer}])
                         self.persist()
                         self.log('Reply completed. Conversation saved locally.')
+                        self.finish_job('Completed', answer)
                     else:
                         self.say('System', 'Could not complete the reply. Check that Ollama is running and the selected model is installed.\n' + value)
                         self.status.set('Connection or model error • You can retry')
                         self.log('Reply failed: ' + value)
+                        self.finish_job('Failed', value)
         except queue.Empty:
             pass
         self.root.after(70, self.poll)

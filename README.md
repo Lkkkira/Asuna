@@ -21,12 +21,18 @@ The window title is **ASUNA — Repo edition**. This edition uses Python's stand
 
 - Fast / Deep model switching with shared recent conversation.
 - Background processing and a show/hide activity panel.
+- Natural-language action plans using the selected local model, with follow-up questions when details are missing.
+- A work view with request/action status and selectable results. Failed steps stop the remaining plan.
 - Opening Windows apps, folders, websites, and browser searches.
 - An offline dictionary with spelling suggestions, adapted from the original project.
 - File-name search inside a folder you choose, and text / Word document attachments.
 - Local notes, tasks, in-app reminders, and screenshot saving.
 
 Try `help`, `open youtube`, `define: algorithm`, `search youtube: Python basics`, `choose search folder`, or `add task: finish assignment`.
+
+You can also say **“Find my physics notes in Downloads,” “Remind me to study in half an hour,” “Open YouTube and search for Python tutorials,”** or **“Read this document and make five practice questions.”** ASUNA can plan up to six supported actions per request. It asks for missing reminder details; document selection opens a file picker. Known command syntax still works without a model connection.
+
+Use **Show / hide activity** or type **“show your work”** to inspect progress. Select a request or individual action to see its result. Work history is for the current app session; saved to-do tasks and reminders remain separate. Reopen the app after updating its files.
 
 See [the usage guide](ASUNA-README.md) for supported commands and limitations. Reminders require the app to stay open; overdue reminders are delivered on restart. Browser searches require internet and open results for you to read. Voice, face recognition, email, OCR, video downloading, and weather/news APIs are not connected to the ASUNA launcher yet.
 
@@ -42,9 +48,10 @@ On Windows, from the repository folder:
 python tests/verify_asuna.py
 python tests/verify_repo.py
 python tests/verify_youtube.py
+python tests/verify_natural_actions.py
 ```
 
-Checks use temporary data and mock app/browser launching. They cover organizer persistence, scoped file opening, document reading, background UI results, dictionary lookup, and command routing. They do not test a live screenshot, a real browser window, or model accuracy.
+Checks use temporary data and mock app/browser launching and model responses. They cover organizer persistence, scoped file opening, document reading, background UI results, dictionary lookup, command routing, plan validation, follow-up clarification, partial failures, and the work panel layout. They do not test a live screenshot, a real browser window, or model accuracy. Natural-language routing requires a running Ollama model; exact commands remain available when it is offline.
 
 ## Credits
 
