@@ -13,6 +13,11 @@ from planner import exact_plan
 
 
 class ChromeTests(unittest.TestCase):
+    def setUp(self):
+        self.profile_settings = patch('browser_profile.settings', return_value=None)
+        self.profile_settings.start()
+        self.addCleanup(self.profile_settings.stop)
+
     def test_launches_chrome_with_separate_url_argument(self):
         path = Path('C:/Program Files/Google/Chrome/Application/chrome.exe')
         with patch('browser_control.session.available', return_value=False), patch('browser.chrome_path', return_value=path), patch('browser.subprocess.Popen') as launch:

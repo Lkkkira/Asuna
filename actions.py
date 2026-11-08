@@ -38,6 +38,7 @@ Use “show your work” to inspect each action and its result, even while busy.
 • Click 12 / Click About / Fill 8: your text (use displayed IDs or exact labels)
 • Go back / Go forward / Reload page / Scroll down / Show browser tabs / Switch to tab 2
 • Pause / Resume / Mute / Unmute (HTML video/audio on the current page)
+• Connect browser — pair the local extension in your chosen Chrome profile
 
 Reminders appear here while ASUNA is open. Overdue reminders appear on restart.
 Personal memory is saved only when you ask. Routines use your PC's local clock.

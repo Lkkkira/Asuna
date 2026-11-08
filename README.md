@@ -26,6 +26,7 @@ The window title is **ASUNA — Reactor · Repo edition**. Text mode uses Python
 - A work view with request/action status and selectable results. Failed steps stop the remaining plan.
 - Opening Windows apps, folders, websites, and browser searches.
 - Websites and searches open explicitly in Google Chrome, independently of the Windows default browser. Chrome must be installed; ASUNA reports an error rather than switching browsers when it cannot find Chrome. You can also type `open chrome`.
+- Choose an existing Chrome profile and control its pages through the free local ASUNA Browser Companion extension. See [profile setup](BROWSER.md).
 - An offline dictionary with spelling suggestions, adapted from the original project.
 - File-name search inside a folder you choose, and text / Word document attachments.
 - Local notes, tasks, in-app reminders, and screenshot saving.
@@ -63,7 +64,7 @@ See [the usage guide](ASUNA-README.md) for supported commands and limitations. R
 
 ## Browser control
 
-Run **Setup Browser.bat** once on a fresh clone, then reopen ASUNA. It uses your installed Chrome in a separate ASUNA-controlled profile, not existing personal tabs. Try `search youtube: Python tutorials` → `open the first video`, or `search web for: Python tutorials` → `open the first result`. Other commands include `read page`, `summarize this page`, `click About`, `click 12`, `fill 8: your text`, `go back`, `scroll down`, `show browser tabs`, `switch to tab 2`, and `pause`/`resume`/`mute`/`unmute`.
+To use an existing Chrome profile, run **Choose Chrome Profile.bat**, load the **chrome-extension** folder manually in that profile, restart ASUNA, and type **connect browser**. The original development computer already has the profile selection saved. Links always use the chosen profile; page control waits for extension pairing. Without a selection, **Setup Browser.bat** enables the separate ASUNA-controlled profile instead. Try `search youtube: Python tutorials` → `open the first video`, or `search web for: Python tutorials` → `open the first result`. Other commands include `read page`, `summarize this page`, `click About`, `click 12`, `fill 8: your text`, `go back`, `scroll down`, `show browser tabs`, `switch to tab 2`, and `pause`/`resume`/`mute`/`unmute`.
 
 See [browser controls and limitations](BROWSER.md). General button clicks and ordinary field entry are reviewed in the app; authentication/payment details and native dialogs remain manual. This works with ordinary HTML controls across websites, rather than every possible browser interaction.
 
@@ -98,6 +99,9 @@ python tests/verify_personal.py
 python tests/verify_voice.py
 python tests/verify_browser.py
 python tests/verify_reactor.py
+python tests/verify_chrome_profile.py
+node tests/verify_extension.js
+python tests/verify_extension_page.py
 ```
 
 Checks use temporary data and mock app/browser launching, microphone capture, speech playback, and model responses. Voice checks need NumPy, available in the voice environment: `.venv-voice\Scripts\python.exe tests/verify_voice.py`. They do not record a real microphone or play sound. They cover organizer persistence, scoped file opening, document reading, background UI results, dictionary lookup, command routing, plan validation, follow-up clarification, partial failures, voice controls, and the work panel layout. They do not test a live screenshot, a real browser window, or model accuracy. Natural-language routing requires a running Ollama model; exact commands remain available when it is offline.

@@ -105,6 +105,13 @@ class Asuna:
         self.voice_playback_ready = True
         root.after(70, self.poll)
         root.after(1000, self.check_reminders)
+        # Temporary-data tests never start the user's local Chrome bridge.
+        if DATA.resolve() == browser_session.data.resolve():
+            try:
+                browser_session.enable_profile()
+            except (OSError, ValueError, RuntimeError) as exc:
+                self.log('Chrome connection: ' + str(exc))
+                self.say('System', str(exc))
 
     def button(self, parent, text, command):
         return tk.Button(parent, text=text, command=command, bg='#142b3a', fg='#edf5ff',
@@ -337,6 +344,8 @@ class Asuna:
         key = text.lower().strip().rstrip('.!?')
         if key in ('help', 'commands', 'what can you do'):
             result = HELP
+        elif key in ('connect browser', 'connect chrome'):
+            result = browser_session.connect_profile()
         elif key in ('switch to fast', 'switch to deep'):
             self.mode.set('Fast' if key.endswith('fast') else 'Deep')
             result = 'Switched to ' + self.mode.get() + '. This applies to your next message.'

@@ -1,8 +1,23 @@
 # Browser control
 
-Close ASUNA and run **Setup Browser.bat**, then reopen **Start ASUNA.bat**. This installs Playwright in the local runtime and reuses your installed Chrome; no paid API or extra browser download is required. Setup is already installed on the original development computer.
+ASUNA can use your chosen everyday Chrome profile through the free local **ASUNA Browser Companion** extension. Profile selection and pairing stay under ignored `data/`; account names, tokens, cookies and login files are not included in the repository. There is no paid API.
 
-ASUNA owns a separate Chrome window/profile in `data/chrome-profile/`. It follows pages opened through ASUNA, rather than attaching to personal Chrome tabs. Cookies and sessions persist locally and remain excluded from Git. Log in manually if needed. Closing ASUNA closes its controlled session; ordinary Chrome windows are separate.
+## Use your existing Chrome profile
+
+1. Run **Choose Chrome Profile.bat**, choose the profile you want, then reopen **Start ASUNA.bat**. The original development computer has already been configured with the user's chosen profile.
+2. In that Chrome profile, open `chrome://extensions`. Turn on **Developer mode**, press **Load unpacked**, and select this repository's **chrome-extension** folder. Chrome shows the extension's permissions; loading it is a manual step.
+3. In ASUNA type **connect browser**. It opens a local connection page in your selected profile. Press **Connect ASUNA** there. You only need to pair once; the extension reconnects while ASUNA runs. If the connection is unavailable after restart, repeat `connect browser`.
+4. Ask ASUNA to open a page, then try `read page` or `open the first video`.
+
+All links and searches open with the saved Chrome profile, even before the extension is paired. Page control waits for the extension; it never silently opens another profile. Closing ASUNA stops its local bridge and leaves your ordinary Chrome windows open. The extension can act on the active ordinary webpage in the connected profile, so check the active tab before issuing a command. Numbered controls and approvals are bound to the observed page/tab. `show browser tabs` lists ordinary web tabs in that profile; use its numbers to switch.
+
+The extension needs permission to read/change HTTP(S) pages so it can operate across websites. It sends visible page excerpts and observed controls to ASUNA on **127.0.0.1:17653**, authenticated with a local pairing secret. It does not use an external server, read Chrome passwords/cookies, or accept arbitrary code from the model. Use the extension popup's **Disconnect this profile** to disconnect. ASUNA supplies requested excerpts to the local Ollama model as untrusted reference data.
+
+Chrome restricts remote debugging of regular profile directories. This extension uses Chrome's extension APIs instead of starting your personal profile through Playwright. See [Chrome's explanation](https://developer.chrome.com/blog/remote-debugging-port).
+
+## Separate browser mode on a fresh clone
+
+If no personal profile has been selected, close ASUNA and run **Setup Browser.bat**, then reopen it. This installs optional Playwright and reuses installed Chrome in `data/chrome-profile/`. It controls only that separate session. Closing ASUNA closes that session. You can sign in manually there, or select your everyday profile and load the extension instead. No account credentials are copied between profiles.
 
 Try these requests:
 
@@ -27,6 +42,6 @@ Visible webpage text is untrusted reference data. It cannot become code, change 
 
 This version supports ordinary accessible HTML pages, not all browser/app interactions. Embedded cross-origin frame controls, canvas-only apps, CAPTCHAs, login/security prompts, browser settings/extensions, and native dialogs require manual work. Downloads/uploads are manual. Video/result detection relies on recognizable links and common result containers, so some layouts will need a listed target instead. A fresh logged-out YouTube homepage may have no videos; search first. Autoplay restrictions and site consent pages may require manual interaction.
 
-Without browser setup, ASUNA can still launch links in ordinary Chrome, but cannot inspect/control those tabs. Restart after setup to use the controlled window.
+Without either extension pairing or separate-browser setup, ASUNA can still launch links, but cannot inspect/control those tabs. Native Chrome dialogs, internal pages and login/security prompts remain manual.
 
-Checks: `python tests/verify_browser_control.py` runs offline unit checks. `.venv-voice\Scripts\python.exe tests/verify_browser_control.py --live` additionally runs headless, muted Chrome against a temporary local HTTP fixture/profile. These never use your personal browser session or an external website.
+Checks: `python tests/verify_browser_control.py` runs offline unit checks; its `--live` option uses headless, muted Chrome with a temporary local HTTP fixture/profile. `python tests/verify_chrome_profile.py` checks profile routing and authenticated loopback requests. `node tests/verify_extension.js` checks the packaged worker with a fake Chrome API. `python tests/verify_extension_page.py` checks the packaged page functions in isolated headless Chrome. These do not install the extension in a personal profile or test a signed-in external website. Manual loading/pairing is still required on the user's profile.

@@ -14,7 +14,7 @@ Voice controls: Record → speak → Stop recording → review the transcript �
 
 ## Commands to try
 
-Optional browser control is described in [BROWSER.md](BROWSER.md). After Setup Browser.bat and restart, ASUNA uses its own Chrome profile to read pages, open numbered links/results/videos, click observed controls, review field entry, navigate tabs, scroll, and control HTML media across ordinary websites.
+Browser/profile setup is described in [BROWSER.md](BROWSER.md). Choose Chrome Profile.bat selects your everyday profile; load the free local extension and type connect browser to enable page control there. Links always use the selected profile. Without a selection, Setup Browser.bat enables the separate Chrome profile instead. Both modes support reading pages, numbered links/results/videos, reviewed clicks/field entry, navigation, tabs, scrolling, and HTML media on ordinary websites.
 
 Natural requests are now supported using your selected Fast/Deep model. For example, “Find my physics notes in Downloads,” “Remind me to study in half an hour,” or “Read this document and make five practice questions.” Known exact commands below bypass model planning and continue to work offline. Unsupported capabilities prompt a clarification instead of running arbitrary commands.
 

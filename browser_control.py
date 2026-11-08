@@ -54,12 +54,34 @@ class BrowserSession:
         self.context = self.page = self.engine = None
         self.pending = {}
         self.closed = False
+        self.extension_bridge = None
+
+    def profile_bridge(self):
+        if self.extension_bridge is None:
+            from chrome_bridge import ProfileBridge
+            self.extension_bridge = ProfileBridge(self.data)
+        return self.extension_bridge
+
+    def enable_profile(self):
+        from browser_profile import settings
+        if not self.headless and settings(self.data):
+            self.profile_bridge().start()
+
+    def connect_profile(self):
+        from browser_profile import settings
+        profile = settings(self.data)
+        if not profile:
+            raise ValueError('Run Choose Chrome Profile.bat first, then reopen ASUNA.')
+        return self.profile_bridge().connect(profile)
 
     @staticmethod
     def available():
         return importlib.util.find_spec('playwright') is not None
 
     def cached(self):
+        from browser_profile import settings
+        if not self.headless and settings(self.data):
+            return self.profile_bridge().cached()
         with self.lock:
             value = copy.deepcopy(self.cache)
         value.pop('text', None)
@@ -73,6 +95,9 @@ class BrowserSession:
     def call(self, action, text='', number=0):
         if self.closed:
             raise RuntimeError('ASUNA browser session is closed.')
+        from browser_profile import settings
+        if not self.headless and settings(self.data):
+            return self.profile_bridge().call(action, text, number)
         if not self.available():
             raise RuntimeError('Run Setup Browser.bat, then reopen ASUNA to enable browser control.')
         with self.lock:
@@ -277,6 +302,8 @@ class BrowserSession:
     def close(self):
         if not self.closed:
             self.closed = True
+            if self.extension_bridge:
+                self.extension_bridge.close()
             self.jobs.put(None)
             if self.thread:
                 self.thread.join(timeout=2)
