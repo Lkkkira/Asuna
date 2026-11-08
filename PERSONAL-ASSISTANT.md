@@ -1,4 +1,4 @@
-# ASUNA 1.1.1 — everyday use
+# ASUNA 1.1.2 — everyday use
 
 ASUNA is a free local Windows assistant. Ollama supplies conversation and natural-language planning; exact commands, organizer data and utilities also work when Ollama is unavailable. Website services still need internet. No paid API key is required.
 
@@ -30,6 +30,8 @@ Use `open discord` for the installed app (official web app fallback), or `open d
 In **Settings → Shortcuts**, add an installed `.exe`, a website address or a folder. Give it a name such as `My editor`, then say `open My editor`. Shortcuts cannot override built-in names such as Chrome and do not accept scripts or shell arguments. Enable/disable them in the panel.
 
 `open youtube and play music` searches for music, opens the first video and requests playback. `play lo-fi music on YouTube` searches that phrase. This needs connected page control; site consent/autoplay restrictions may still require interaction. `first video` and `second result` are direct follow-ups on the current page. ASUNA rejects plans that drop a named destination and merely open Chrome.
+
+Successful browser work gets a short acknowledgement, such as “Playing music on YouTube.” Detailed page/control output stays in Activity instead of being read aloud or added to ordinary action replies. Explicit `read page` and `show browser tabs` still display the lists so you can choose targets. Summaries and document answers continue to speak normally. **Stop speaking** interrupts a current response.
 
 For website control, use `read page`, `open the first result`, `click` with an exact displayed label/ID, or `type: your draft`. `type Discord in the search box` selects the page's search field. Ordinary field entry is reviewed and does not automatically press Enter or send. Use the explicit site-search command when you want a search submitted. Generic buttons and sensitive links also require review. Login, passwords, payment details, CAPTCHAs, browser permission prompts and native dialogs remain manual. See [browser details](BROWSER.md).
 

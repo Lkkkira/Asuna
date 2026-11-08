@@ -5,6 +5,7 @@ import json
 from datetime import date
 from planner import SITES
 from actions import read_document
+from action_feedback import browser_feedback
 
 
 @dataclass
@@ -12,6 +13,16 @@ class ToolResult:
     detail: str
     document: tuple | None = None
     reference: str | None = None
+    reply: str | None = None
+    speech: str | None = None
+
+    @property
+    def message(self):
+        return self.detail if self.reply is None else self.reply
+
+    @property
+    def spoken(self):
+        return self.message if self.speech is None else self.speech
 
 
 def known_folder(name):
@@ -82,7 +93,8 @@ class ToolExecutor:
                 if not self.confirm or not self.confirm(result['confirm']):
                     raise InterruptedError('Browser action cancelled; the page control was not used.')
                 result = session.call('approve', result['ticket'])
-            return ToolResult(result['detail'], reference=result.get('reference'))
+            reply,speech = browser_feedback(tool,text,number,result['detail'])
+            return ToolResult(result['detail'], reference=result.get('reference'),reply=reply,speech=speech)
         if tool in ('save_memory', 'update_memory'):
             return ToolResult(self.personal.save_memory(text, number if tool == 'update_memory' else 0,
                                                        context_floor=self.context_count + 2))

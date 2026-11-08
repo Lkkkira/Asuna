@@ -228,6 +228,54 @@ class VoiceUI(unittest.TestCase):
             self.app.say('ASUNA', 'silent reply')
         speak.assert_not_called()
 
+    def run_action(self,text):
+        self.app.begin_job(text)
+        self.app.busy = True
+        self.app.action_worker(text,context={})
+        self.app.poll()
+
+    def test_requested_page_controls_stay_visible_but_are_not_read_aloud(self):
+        controls = 'Page: Fixture\nhttps://example.test\n1. [button] Guide\n2. [field] Search'
+        self.app.speak_replies.set(True)
+        with patch('browser_control.session') as session,patch.object(self.app.voice,'speak') as speak:
+            session.cached.return_value = {'token':'fixture'}
+            session.call.return_value = {'detail':controls,'reference':'Page body for local questions.'}
+            self.run_action('read page')
+        self.assertIn(controls,self.app.chat.get('1.0','end'))
+        self.assertIn(controls,self.app.job_details['job1-s0'])
+        speak.assert_called_once_with('Page read. The page text and controls are available in chat and Activity.','')
+
+    def test_tab_urls_remain_visible_without_narrating_the_tab_inventory(self):
+        tabs = '1. Notes — https://example.test/notes\n2. YouTube — https://youtube.com'
+        self.app.speak_replies.set(True)
+        with patch('browser_control.session') as session,patch.object(self.app.voice,'speak') as speak:
+            session.cached.return_value = {'token':'fixture'}
+            session.call.return_value = {'detail':tabs}
+            self.run_action('show browser tabs')
+        self.assertIn(tabs,self.app.chat.get('1.0','end'))
+        speak.assert_called_once_with('Your browser tabs are listed in chat and Activity.','')
+
+    def test_browser_error_with_page_dump_speaks_only_the_failure(self):
+        error = 'No matching item at that position.\nPage: Fixture\nhttps://example.test\n1. [button] Guide'
+        self.app.speak_replies.set(True)
+        with patch('browser_control.session') as session,patch.object(self.app.voice,'speak') as speak:
+            session.cached.return_value = {'token':'fixture'}
+            session.call.side_effect = ValueError(error)
+            self.run_action('first video')
+        speak.assert_called_once_with('No matching item at that position.','')
+        self.assertIn(error,self.app.job_details['job1'])
+        self.assertNotIn('[button]',self.app.chat.get('1.0','end'))
+
+    def test_action_preamble_is_silent_before_a_generated_answer(self):
+        self.app.speak_replies.set(True)
+        self.app.events.put(('action_summary','Read the current page.'))
+        self.app.events.put(('begin',None))
+        self.app.events.put(('token','Here is the article summary.'))
+        self.app.events.put(('done',('summarize this page','Here is the article summary.')))
+        with patch.object(self.app.voice,'speak') as speak:
+            self.app.poll()
+        speak.assert_called_once_with('Here is the article summary.','')
+
     def test_stale_speech_status_does_not_override_stop(self):
         self.app.stop_speaking()
         self.app.events.put(('speech_status', (0, 'Speaking…')))

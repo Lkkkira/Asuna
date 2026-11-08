@@ -196,7 +196,20 @@ class NaturalActions(unittest.TestCase):
         chrome.assert_called_once_with('https://www.youtube.com/results?search_query=music')
         self.assertEqual([c.args for c in browser.call_args_list],[('open_item','video',1),('media','play',0)])
         self.assertEqual(self.statuses(),['Completed'])
-        self.assertIn('Playing video',speak.call_args.args[0])
+        self.assertEqual(speak.call_args.args[0],'Playing music on YouTube.')
+
+    def test_youtube_success_does_not_narrate_or_store_the_page_control_dump_as_a_reply(self):
+        controls = 'Page: (68) YouTube\nhttps://www.youtube.com/watch?v=fixture\n1. [button] Guide\n2. [field] Search\n3. [button] Pause (k)'
+        self.app.speak_replies.set(True)
+        with patch('jarvis.open_chrome'),patch('browser_control.session.call',side_effect=[{'detail':controls},{'detail':'Media state: playing, unmuted.'}]), \
+                patch.object(self.app.voice,'speak') as speak:
+            self.app.submit('open youtube and play music')
+            self.wait()
+        speak.assert_called_once_with('Playing music on YouTube.','')
+        self.assertEqual(self.app.history[-1]['content'],'Playing music on YouTube.')
+        self.assertNotIn('[button]',self.app.chat.get('1.0','end'))
+        self.assertIn(controls,self.app.job_details['job1-s1'])
+        self.assertIn(controls,self.app.job_details['job1'])
 
     def test_first_video_followup_bypasses_a_prior_clarification_and_never_opens_google(self):
         self.app.pending_request = {'original_request':'Open YouTube','latest_reply':'','question':'Which video?'}

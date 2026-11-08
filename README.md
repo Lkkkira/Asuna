@@ -15,7 +15,11 @@ A personal Windows assistant with a chat interface, local Ollama models, and exp
 
 4. Double-click **Start ASUNA.bat**, or run `python asuna.py`.
 
-The window title is **ASUNA — Reactor · Repo edition · 1.1.1**. Basic text mode uses Python's standard library; the old upstream `requirements.txt` is not needed to run it. Run **Setup ASUNA.bat** once for optional PDF text reading. Optional voice setup is below.
+The window title is **ASUNA — Reactor · Repo edition · 1.1.2**. Basic text mode uses Python's standard library; the old upstream `requirements.txt` is not needed to run it. Run **Setup ASUNA.bat** once for optional PDF text reading. Optional voice setup is below.
+
+## Short action replies — 1.1.2
+
+Routine browser actions now use brief chat and voice acknowledgements. A successful `open youtube and play music` says **“Playing music on YouTube.”** Full tool output, page addresses and numbered controls remain in **Activity**. Explicit `read page` and `show browser tabs` requests still display their lists for choosing targets; speech acknowledges the request without narrating the list. Page questions and article summaries still speak the generated answer. Browser errors speak a short failure, retaining diagnostic details in Activity. Reopen ASUNA to load this Python update; the existing extension is unchanged.
 
 ## Browser and speech fix — 1.1.1
 
