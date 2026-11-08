@@ -9,6 +9,7 @@ from actions import read_document
 class ToolResult:
     detail: str
     document: tuple | None = None
+    reference: str | None = None
 
 
 def known_folder(name):
@@ -29,13 +30,26 @@ def known_folder(name):
 
 
 class ToolExecutor:
-    def __init__(self, actions, repo, choose, personal=None, context_count=0):
+    def __init__(self, actions, repo, choose, personal=None, context_count=0, confirm=None):
         self.actions, self.repo, self.choose = actions, repo, choose
         self.personal = personal
         self.context_count = context_count
+        self.confirm = confirm
+        from browser_control import session
+        self.browser_token = session.cached()['token']
 
     def execute(self, s):
         tool, text, number = s['tool'], s['text'], s['number']
+        if tool.startswith('browser_'):
+            from browser_control import session
+            if tool in ('browser_click', 'browser_fill') and number and session.cached()['token'] != self.browser_token:
+                raise ValueError('The browser page changed after this plan was made. Read the page again and choose the target in a new request.')
+            result = session.call(tool.removeprefix('browser_'), text, number)
+            if result.get('confirm'):
+                if not self.confirm or not self.confirm(result['confirm']):
+                    raise InterruptedError('Browser action cancelled; the page control was not used.')
+                result = session.call('approve', result['ticket'])
+            return ToolResult(result['detail'], reference=result.get('reference'))
         if tool in ('save_memory', 'update_memory'):
             return ToolResult(self.personal.save_memory(text, number if tool == 'update_memory' else 0,
                                                        context_floor=self.context_count + 2))

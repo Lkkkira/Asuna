@@ -14,6 +14,8 @@ Voice controls: Record → speak → Stop recording → review the transcript �
 
 ## Commands to try
 
+Optional browser control is described in [BROWSER.md](BROWSER.md). After Setup Browser.bat and restart, ASUNA uses its own Chrome profile to read pages, open numbered links/results/videos, click observed controls, review field entry, navigate tabs, scroll, and control HTML media across ordinary websites.
+
 Natural requests are now supported using your selected Fast/Deep model. For example, “Find my physics notes in Downloads,” “Remind me to study in half an hour,” or “Read this document and make five practice questions.” Known exact commands below bypass model planning and continue to work offline. Unsupported capabilities prompt a clarification instead of running arbitrary commands.
 
 Use Show / hide activity to view requests and their individual actions, status, and result details. The panel can be opened while ASUNA is busy, including by typing “show your work” and pressing Enter. Work records last for this app session. Plans are validated before execution, contain at most six supported actions, run in order, and stop after a failure or cancellation. Earlier completed actions are not undone. No automatic retries of side effects occur.

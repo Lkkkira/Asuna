@@ -58,6 +58,12 @@ Routines support daily, weekdays, or a specific weekday, at an explicit 24-hour 
 
 See [the usage guide](ASUNA-README.md) for supported commands and limitations. Reminders require the app to stay open; overdue reminders are delivered on restart. Browser searches require internet and open results for you to read. Face recognition, email, OCR, video downloading, and weather/news APIs are not connected to the ASUNA launcher yet.
 
+## Browser control
+
+Run **Setup Browser.bat** once on a fresh clone, then reopen ASUNA. It uses your installed Chrome in a separate ASUNA-controlled profile, not existing personal tabs. Try `search youtube: Python tutorials` → `open the first video`, or `search web for: Python tutorials` → `open the first result`. Other commands include `read page`, `summarize this page`, `click About`, `click 12`, `fill 8: your text`, `go back`, `scroll down`, `show browser tabs`, `switch to tab 2`, and `pause`/`resume`/`mute`/`unmute`.
+
+See [browser controls and limitations](BROWSER.md). General button clicks and ordinary field entry are reviewed in the app; authentication/payment details and native dialogs remain manual. This works with ordinary HTML controls across websites, rather than every possible browser interaction.
+
 ## Voice interaction
 
 On a fresh clone, close ASUNA and run **Setup Voice.bat** once. It installs optional packages in `.venv-voice/` and downloads the multilingual **Whisper Small** recognition model into `data/voice-model-small/`. Internet is needed for setup; no paid API keys are required. On the original development computer, voice setup has already been completed. Small is preferred when fully downloaded; the previous Base model remains a fallback if present. Small may take longer to transcribe on the CPU. To download only the lightweight fallback, use `.venv-voice\Scripts\python.exe voice_setup.py --download-only --model base`.

@@ -32,5 +32,9 @@ def open_chrome(url):
     parsed = urlparse(url)
     if parsed.scheme not in ('http', 'https') or not parsed.hostname or any(c.isspace() for c in url):
         raise ValueError('Only ordinary http(s) web links can be opened.')
+    from browser_control import session
+    if session.available():
+        session.call('open', url)
+        return True
     subprocess.Popen([str(chrome_path()), '--new-tab', url], shell=False)
     return True

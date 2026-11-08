@@ -34,6 +34,10 @@ Use “show your work” to inspect each action and its result, even while busy.
 • Remind me in 20 minutes to take a break / Show reminders / Cancel reminder 1
 • Save note: your note / Show notes
 • Switch to fast / Switch to deep / Show activity / Hide activity
+• Read page / Summarize this page / Open the first result / Open the first video
+• Click 12 / Click About / Fill 8: your text (use displayed IDs or exact labels)
+• Go back / Go forward / Reload page / Scroll down / Show browser tabs / Switch to tab 2
+• Pause / Resume / Mute / Unmute (HTML video/audio on the current page)
 
 Reminders appear here while ASUNA is open. Overdue reminders appear on restart.
 Personal memory is saved only when you ask. Routines use your PC's local clock.

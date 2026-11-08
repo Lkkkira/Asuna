@@ -15,12 +15,12 @@ from planner import exact_plan
 class ChromeTests(unittest.TestCase):
     def test_launches_chrome_with_separate_url_argument(self):
         path = Path('C:/Program Files/Google/Chrome/Application/chrome.exe')
-        with patch('browser.chrome_path', return_value=path), patch('browser.subprocess.Popen') as launch:
+        with patch('browser_control.session.available', return_value=False), patch('browser.chrome_path', return_value=path), patch('browser.subprocess.Popen') as launch:
             open_chrome('https://youtube.com')
         launch.assert_called_once_with([str(path), '--new-tab', 'https://youtube.com'], shell=False)
 
     def test_no_chrome_gives_error_instead_of_system_browser_fallback(self):
-        with patch('browser.Path.is_file', return_value=False), patch('browser.subprocess.Popen') as launch:
+        with patch('browser_control.session.available', return_value=False), patch('browser.Path.is_file', return_value=False), patch('browser.subprocess.Popen') as launch:
             with self.assertRaisesRegex(FileNotFoundError, 'Chrome was not found'):
                 open_chrome('https://youtube.com')
         launch.assert_not_called()
