@@ -54,14 +54,14 @@ class Asuna:
         self.voice = VoiceController(self.events, BASE, DATA)
         self.voice_playback_ready = False
         self.voice_name = ''
-        self.voice_language = 'auto'
+        self.voice_language = 'en'
         self.voice_device = None
         self.voice_window = None
         self.speak_replies = tk.BooleanVar(value=False)
         try:
             settings = json.loads((DATA / 'voice-settings.json').read_text(encoding='utf-8'))
             self.voice_name = settings.get('voice', '') if isinstance(settings.get('voice', ''), str) else ''
-            self.voice_language = settings.get('language', 'auto') if settings.get('language', 'auto') in ('auto', 'en', 'hi') else 'auto'
+            self.voice_language = settings.get('language', 'en') if settings.get('language', 'en') in ('auto', 'en', 'hi', 'mixed') else 'en'
             self.speak_replies.set(settings.get('speak_replies') is True)
         except (OSError, ValueError, AttributeError):
             pass
@@ -119,7 +119,8 @@ class Asuna:
                        bg='#10121c', fg='#e8eaf3', selectcolor='#30374d', activebackground='#10121c',
                        activeforeground='white').pack(side='left', padx=4)
         self.button(voice_bar, 'Voice settings', self.show_voice_settings).pack(side='left', padx=6)
-        self.voice_status = tk.StringVar(value='Record, then review and Send' if self.voice.ready() else 'Run Setup Voice.bat to enable microphone input')
+        profile_label = {'en': 'English', 'hi': 'Hindi', 'mixed': 'English + Hindi', 'auto': 'Auto (all languages)'}[self.voice_language]
+        self.voice_status = tk.StringVar(value=f'{profile_label} • Whisper {self.voice.model_name} • Record, then review and Send' if self.voice.ready() else 'Run Setup Voice.bat to enable microphone input')
         tk.Label(root, textvariable=self.voice_status, bg='#10121c', fg='#929ab5', anchor='w',
                  font=('Segoe UI', 9)).pack(fill='x', padx=28, pady=(0, 8))
         self.chat = scrolledtext.ScrolledText(root, wrap='word', bg='#191d2b', fg='#e8eaf3',
@@ -251,14 +252,16 @@ class Asuna:
                                         values=['Windows default microphone'])
         self.mic_choices.pack(anchor='w', padx=20, pady=5)
         tk.Label(window, text='Recognition language', bg='#10121c', fg='white').pack(anchor='w', padx=20)
-        language = tk.StringVar(value={'auto': 'Auto detect', 'en': 'English', 'hi': 'Hindi'}[self.voice_language])
-        ttk.Combobox(window, textvariable=language, values=['Auto detect', 'English', 'Hindi'],
-                     state='readonly', width=24).pack(anchor='w', padx=20, pady=5)
+        language_names = {'en': 'English (recommended)', 'mixed': 'Mixed English + Hindi', 'hi': 'Hindi', 'auto': 'Auto (all languages)'}
+        language = tk.StringVar(value=language_names[self.voice_language])
+        ttk.Combobox(window, textvariable=language, values=list(language_names.values()),
+                     state='readonly', width=28).pack(anchor='w', padx=20, pady=5)
         def apply():
             self.voice_name = self.voice_map.get(self.voice_choice.get(), '')
             self.voice_device = self.mic_map.get(self.mic_choice.get())
-            self.voice_language = {'Auto detect': 'auto', 'English': 'en', 'Hindi': 'hi'}[language.get()]
+            self.voice_language = next(k for k, v in language_names.items() if v == language.get())
             self.save_voice_settings()
+            self.voice_status.set(f'{language.get()} • Whisper {self.voice.model_name} • Ready to record')
             window.destroy()
         self.voice_map, self.mic_map = {'Automatic female Windows voice': ''}, {'Windows default microphone': None}
         self.button(window, 'Apply', apply).pack(anchor='e', padx=20, pady=12)

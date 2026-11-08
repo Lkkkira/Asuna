@@ -10,7 +10,7 @@ from pathlib import Path
 from unittest.mock import patch, MagicMock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from voice import VoiceController, spoken_text, resample_pcm
+from voice import VoiceController, spoken_text, resample_pcm, choose_mixed_language, expected_script
 import asuna
 
 
@@ -119,6 +119,56 @@ class VoiceTests(unittest.TestCase):
         self.assertTrue(module.WhisperModel.call_args.kwargs['local_files_only'])
         self.assertEqual(module.WhisperModel.call_args.kwargs['device'], 'cpu')
 
+    def test_english_is_forced_instead_of_auto_detection(self):
+        self.voice.model = MagicMock()
+        self.voice.model.transcribe.return_value = ([types.SimpleNamespace(text='open calculator')], None)
+        self.voice.transcribe('fixture')
+        arguments = self.voice.model.transcribe.call_args.kwargs
+        self.assertEqual(arguments['language'], 'en')
+        self.assertEqual(arguments['task'], 'transcribe')
+        self.assertEqual(arguments['temperature'], 0.0)
+        self.voice.model.detect_language.assert_not_called()
+
+    def test_mixed_profile_is_limited_to_english_and_hindi(self):
+        self.assertEqual(choose_mixed_language([('ja', .9), ('en', .07), ('hi', .03)]), 'en')
+        self.assertEqual(choose_mixed_language([('de', .6), ('en', .1), ('hi', .3)]), 'hi')
+        self.assertEqual(choose_mixed_language([('en', .4), ('hi', .42)]), 'en')
+        self.voice.model = MagicMock()
+        self.voice.model.detect_language.return_value = ('ja', .9, [('ja', .9), ('en', .07), ('hi', .03)])
+        self.voice.model.transcribe.return_value = ([types.SimpleNamespace(text='hello')], None)
+        import numpy as np
+        self.voice.transcribe(np.zeros(16000, dtype=np.float32), 'mixed')
+        self.assertEqual(self.voice.model.transcribe.call_args.kwargs['language'], 'en')
+
+    def test_unexpected_script_is_rejected_in_selected_profiles(self):
+        self.assertTrue(expected_script('Hello नमस्ते ASUNA'))
+        self.assertFalse(expected_script('これは日本語です'))
+        self.voice.model = MagicMock()
+        self.voice.model.transcribe.return_value = ([types.SimpleNamespace(text='これは日本語です')], None)
+        with self.assertRaisesRegex(RuntimeError, 'unexpected language'):
+            self.voice.transcribe('fixture', 'en')
+        self.assertEqual(self.voice.transcribe('fixture', None), 'これは日本語です')
+
+    def test_small_model_is_selected_only_when_download_is_complete(self):
+        folder = self.path / 'voice-model-small'
+        folder.mkdir()
+        (folder / 'model.bin').touch()
+        incomplete = VoiceController(queue.Queue(), self.path, self.path)
+        self.assertEqual(incomplete.model_name, 'Base')
+        for name in ('config.json', 'tokenizer.json', 'vocabulary.txt'):
+            (folder / name).touch()
+        complete = VoiceController(queue.Queue(), self.path, self.path)
+        self.assertEqual(complete.model_name, 'Small')
+
+    def test_resampler_filters_out_of_band_microphone_noise(self):
+        import numpy as np
+        t = np.arange(48000) / 48000
+        low = (np.sin(2 * np.pi * 1000 * t) * 16000).astype(np.int16)
+        high = (np.sin(2 * np.pi * 12000 * t) * 16000).astype(np.int16)
+        low_output = resample_pcm([low.tobytes()], 48000)[100:-100]
+        high_output = resample_pcm([high.tobytes()], 48000)[100:-100]
+        self.assertLess(float(np.sqrt(np.mean(high_output ** 2))), float(np.sqrt(np.mean(low_output ** 2))) * .1)
+
 
 class VoiceUI(unittest.TestCase):
     def setUp(self):
@@ -187,6 +237,13 @@ class VoiceUI(unittest.TestCase):
         settings = json.loads((asuna.DATA / 'voice-settings.json').read_text())
         self.assertEqual(settings['voice'], 'Microsoft Zira Desktop')
         self.assertTrue(settings['speak_replies'])
+
+    def test_new_profile_defaults_to_english_and_mixed_is_persisted(self):
+        self.assertEqual(self.app.voice_language, 'en')
+        self.app.voice_language = 'mixed'
+        self.app.save_voice_settings()
+        settings = json.loads((asuna.DATA / 'voice-settings.json').read_text())
+        self.assertEqual(settings['language'], 'mixed')
 
 
 if __name__ == '__main__':

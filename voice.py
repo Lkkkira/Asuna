@@ -4,6 +4,7 @@ import json
 import re
 import subprocess
 import threading
+import unicodedata
 from pathlib import Path
 
 
@@ -20,17 +21,38 @@ def spoken_text(text):
 
 def resample_pcm(chunks, sample_rate):
     import numpy as np
-    audio = np.frombuffer(b''.join(chunks), dtype=np.int16).astype(np.float32) / 32768.0
-    if sample_rate != 16000 and audio.size:
-        count = int(round(len(audio) * 16000 / sample_rate))
-        audio = np.interp(np.arange(count) * sample_rate / 16000, np.arange(len(audio)), audio).astype(np.float32)
-    return audio
+    pcm = np.frombuffer(b''.join(chunks), dtype=np.int16)
+    if sample_rate == 16000 or not pcm.size:
+        return pcm.astype(np.float32) / 32768.0
+    # Use the bundled FFmpeg resampler, including its anti-alias filter.
+    import av
+    frame = av.AudioFrame.from_ndarray(pcm.reshape(1, -1), format='s16', layout='mono')
+    frame.sample_rate = sample_rate
+    resampler = av.AudioResampler(format='flt', layout='mono', rate=16000)
+    frames = resampler.resample(frame) + resampler.resample(None)
+    return np.concatenate([f.to_ndarray().reshape(-1) for f in frames]).astype(np.float32)
+
+
+def choose_mixed_language(probabilities):
+    """Never choose a third language for the English/Hindi profile."""
+    probabilities = dict(probabilities)
+    english, hindi = probabilities.get('en', 0), probabilities.get('hi', 0)
+    return 'hi' if hindi >= .20 and hindi > english * 1.2 else 'en'
+
+
+def expected_script(text):
+    letters = [unicodedata.name(c, '') for c in text if c.isalpha()]
+    return not letters or sum('LATIN' in n or 'DEVANAGARI' in n for n in letters) / len(letters) >= .8
 
 
 class VoiceController:
     def __init__(self, events, base, data):
         self.events, self.base, self.data = events, Path(base), Path(data)
-        self.model_path = self.data / 'voice-model'
+        small = self.data / 'voice-model-small'
+        required = ('model.bin', 'config.json', 'tokenizer.json', 'vocabulary.txt')
+        use_small = all((small / name).is_file() for name in required)
+        self.model_path = small if use_small else self.data / 'voice-model'
+        self.model_name = 'Small' if use_small else 'Base'
         self.model = None
         self.input_busy = False
         self.recording = False
@@ -62,7 +84,7 @@ class VoiceController:
         devices = sd.query_devices()
         return [{'id': i, 'name': d['name']} for i, d in enumerate(devices) if d['max_input_channels'] > 0]
 
-    def start_recording(self, device=None, language=None):
+    def start_recording(self, device=None, language='en'):
         if self.input_busy:
             return False
         if not self.ready():
@@ -118,14 +140,26 @@ class VoiceController:
             self.recording = False
             self.input_busy = False
 
-    def transcribe(self, audio, language=None):
+    def transcribe(self, audio, language='en'):
         if self.model is None:
             from faster_whisper import WhisperModel
             self.model = WhisperModel(str(self.model_path), device='cpu', compute_type='int8',
                                       cpu_threads=4, local_files_only=True)
-        segments, _ = self.model.transcribe(audio, language=language, vad_filter=True, beam_size=3,
+        profile = language
+        if language == 'mixed':
+            if isinstance(audio, (str, Path)):
+                from faster_whisper.audio import decode_audio
+                audio = decode_audio(str(audio), sampling_rate=16000)
+            _, _, probabilities = self.model.detect_language(audio=audio, vad_filter=True)
+            language = choose_mixed_language(probabilities)
+        segments, _ = self.model.transcribe(audio, language=language, task='transcribe', vad_filter=True,
+                                            beam_size=5, temperature=0.0,
+                                            hotwords='ASUNA, Ollama, YouTube',
                                             condition_on_previous_text=False)
-        return ' '.join(s.text.strip() for s in segments if s.text.strip()).strip()
+        text = ' '.join(s.text.strip() for s in segments if s.text.strip()).strip()
+        if profile in ('en', 'hi', 'mixed') and not expected_script(text):
+            raise RuntimeError('Recognition produced an unexpected language/script. Nothing was sent. Try again or select English/Hindi explicitly.')
+        return text
 
     def speak(self, text, voice=''):
         text = spoken_text(text)
