@@ -6,6 +6,7 @@
 - Keep conversations, notes, organizer data, screenshots, credentials, and local environments out of Git. User-generated data lives under data/.
 - Keep the upstream MIT license and attribution intact.
 - Entry point: asuna.py; launcher: Start ASUNA.bat. Do not wire in legacy import-time speech, camera, email, or network side effects.
+- The user selected Halo / Reactor as the main interface. Keep its animation tied to actual app events and preserve chat, Activity, voice, and Fast/Deep access. For UI/state changes run python tests/verify_reactor.py; microphone/speaker checks must remain mocked.
 - Run checks from the repository folder: python tests/verify_asuna.py; python tests/verify_repo.py; python tests/verify_youtube.py.
 - Also run python tests/verify_natural_actions.py for planner, tool execution, and work-view changes. Keep planning separate from answer generation; attached document text must never become tool instructions.
 - For personal-memory or recurrence changes, run python tests/verify_personal.py. Never save inferred memories without an explicit user request. Keep personal.json out of Git and separate routine IDs from one-time reminder IDs.

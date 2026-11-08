@@ -18,7 +18,9 @@ Optional browser control is described in [BROWSER.md](BROWSER.md). After Setup B
 
 Natural requests are now supported using your selected Fast/Deep model. For example, “Find my physics notes in Downloads,” “Remind me to study in half an hour,” or “Read this document and make five practice questions.” Known exact commands below bypass model planning and continue to work offline. Unsupported capabilities prompt a clarification instead of running arbitrary commands.
 
-Use Show / hide activity to view requests and their individual actions, status, and result details. The panel can be opened while ASUNA is busy, including by typing “show your work” and pressing Enter. Work records last for this app session. Plans are validated before execution, contain at most six supported actions, run in order, and stop after a failure or cancellation. Earlier completed actions are not undone. No automatic retries of side effects occur.
+The Halo / Reactor interface shows cyan rings beside chat and a live activity summary. Its state follows actual listening, local-model thinking, work, speech playback, waiting, and errors. The recording visualization uses microphone volume; the speaking pattern is decorative and follows playback status. Motion turns off continuous movement and is saved locally. There are no new interface dependencies.
+
+Use Activity to view requests and their individual actions, status, and result details. The panel can be opened while ASUNA is busy, including by typing “show your work” and pressing Enter. Chat and the input box remain visible; smaller windows use a compact work view. Work records last for this app session. Plans are validated before execution, contain at most six supported actions, run in order, and stop after a failure or cancellation. Earlier completed actions are not undone. No automatic retries of side effects occur.
 
 | Request | Result |
 | --- | --- |

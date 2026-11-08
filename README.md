@@ -15,11 +15,12 @@ A personal Windows assistant with a chat interface, local Ollama models, and exp
 
 4. Double-click **Start ASUNA.bat**, or run `python asuna.py`.
 
-The window title is **ASUNA — Repo edition**. Text mode uses Python's standard library; the old upstream `requirements.txt` is not needed to run it. Optional voice setup is below.
+The window title is **ASUNA — Reactor · Repo edition**. Text mode uses Python's standard library; the old upstream `requirements.txt` is not needed to run it. Optional voice setup is below.
 
 ## Features
 
 - Fast / Deep model switching with shared recent conversation.
+- The Halo / Reactor interface: animated cyan rings, a live activity summary, and conversation beside the core. Listening, thinking, working, speaking, waiting, and error states follow actual app events.
 - Background processing and a show/hide activity panel.
 - Natural-language action plans using the selected local model, with follow-up questions when details are missing.
 - A work view with request/action status and selectable results. Failed steps stop the remaining plan.
@@ -35,11 +36,13 @@ Try `help`, `open youtube`, `define: algorithm`, `search youtube: Python basics`
 
 You can also say **“Find my physics notes in Downloads,” “Remind me to study in half an hour,” “Open YouTube and search for Python tutorials,”** or **“Read this document and make five practice questions.”** ASUNA can plan up to six supported actions per request. It asks for missing reminder details; document selection opens a file picker. Known command syntax still works without a model connection.
 
-Use **Show / hide activity** or type **“show your work”** to inspect progress. Select a request or individual action to see its result. Work history is for the current app session; saved to-do tasks and reminders remain separate. Reopen the app after updating its files.
+Use **Activity** or type **“show your work”** to inspect progress. Select a request or individual action to see its result. Chat and the input box remain available alongside Activity; a compact layout makes room when the window is smaller. Work history is for the current app session; saved to-do tasks and reminders remain separate. Reopen the app after updating its files.
+
+The Reactor responds to local microphone volume only while recording. Its speaking pattern is an animation tied to playback status, not a measured speaker waveform. **Motion** pauses ring rotation and decorative movement; the setting is saved locally in `data/ui-settings.json`. Recording levels and status updates still work with Motion off. Animation updates slow down when minimized. The interface adds no packages or paid services.
 
 ## Personal memory and routines
 
-Use **My memory** and **My day** in the toolbar, or ask naturally:
+Use **Memory** and **My day** in the toolbar, or ask naturally:
 
 - “Remember that I prefer short answers.”
 - “What do you remember about me?”
@@ -94,6 +97,7 @@ python tests/verify_natural_actions.py
 python tests/verify_personal.py
 python tests/verify_voice.py
 python tests/verify_browser.py
+python tests/verify_reactor.py
 ```
 
 Checks use temporary data and mock app/browser launching, microphone capture, speech playback, and model responses. Voice checks need NumPy, available in the voice environment: `.venv-voice\Scripts\python.exe tests/verify_voice.py`. They do not record a real microphone or play sound. They cover organizer persistence, scoped file opening, document reading, background UI results, dictionary lookup, command routing, plan validation, follow-up clarification, partial failures, voice controls, and the work panel layout. They do not test a live screenshot, a real browser window, or model accuracy. Natural-language routing requires a running Ollama model; exact commands remain available when it is offline.

@@ -13,6 +13,7 @@ from planner import exact_plan, make_plan, label, validate_plan
 from tools_local import ToolExecutor
 from personal import PersonalStore
 from voice import VoiceController
+from reactor_ui import build_reactor, PRESENCE
 from browser_control import session as browser_session
 import time
 
@@ -84,85 +85,16 @@ class Asuna:
             self.storage_error = 'Previous conversation could not be read; starting a fresh session.'
         if not self.history and self.personal.state['context_floor']:
             self.personal.reset_context()
-        root.title('ASUNA — Repo edition')
-        root.geometry('1020x820')
-        root.minsize(720, 680)
-        root.protocol('WM_DELETE_WINDOW', self.close)
-        root.configure(bg='#10121c')
-        style = ttk.Style()
-        style.theme_use('clam')
-        style.configure('TCombobox', padding=7)
-        top = tk.Frame(root, bg='#10121c')
-        top.pack(fill='x', padx=26, pady=(22, 12))
-        tk.Label(top, text='ASUNA', font=('Segoe UI', 25, 'bold'), fg='#f5c2df', bg='#10121c').pack(side='left')
-        tk.Label(top, text='  YOUR LOCAL COMPANION', font=('Segoe UI', 10), fg='#929ab5', bg='#10121c').pack(side='left')
-        self.mode = tk.StringVar(value='Fast')
-        self.selector = ttk.Combobox(top, textvariable=self.mode, values=list(MODELS), state='readonly', width=9)
-        self.selector.pack(side='right')
-        self.selector.bind('<<ComboboxSelected>>', lambda e: self.log('Mode selected: ' + self.mode.get() + '. Applies to your next message.'))
-        self.status = tk.StringVar(value='Ready • Local models • Text mode')
-        tk.Label(root, textvariable=self.status, fg='#99d8c3', bg='#10121c', anchor='w').pack(fill='x', padx=28)
-        tools = tk.Frame(root, bg='#10121c')
-        tools.pack(fill='x', padx=26, pady=12)
-        self.toolbar_buttons = []
-        for label, command in [('Show / hide activity', self.toggle_activity), ('New conversation', self.clear),
-                               ('My day', lambda: self.submit('daily overview')),
-                               ('My memory', lambda: self.submit('show memories')),
-                               ('Read document', self.attach_document),
-                               ('Commands', lambda: self.submit('help'))]:
-            self.toolbar_buttons.append(self.button(tools, label, command))
-        tools.bind('<Configure>', self.layout_toolbar)
-        voice_bar = tk.Frame(root, bg='#10121c')
-        voice_bar.pack(fill='x', padx=26, pady=(0, 8))
-        self.record_button = self.button(voice_bar, 'Record', self.toggle_recording)
-        self.record_button.pack(side='left', padx=(0, 6))
-        self.button(voice_bar, 'Stop speaking', self.stop_speaking).pack(side='left', padx=(0, 6))
-        tk.Checkbutton(voice_bar, text='Speak replies', variable=self.speak_replies, command=self.toggle_speech,
-                       bg='#10121c', fg='#e8eaf3', selectcolor='#30374d', activebackground='#10121c',
-                       activeforeground='white').pack(side='left', padx=4)
-        self.button(voice_bar, 'Voice settings', self.show_voice_settings).pack(side='left', padx=6)
-        profile_label = {'en': 'English', 'hi': 'Hindi', 'mixed': 'English + Hindi', 'auto': 'Auto (all languages)'}[self.voice_language]
-        self.voice_status = tk.StringVar(value=f'{profile_label} • Whisper {self.voice.model_name} • Record, then review and Send' if self.voice.ready() else 'Run Setup Voice.bat to enable microphone input')
-        tk.Label(root, textvariable=self.voice_status, bg='#10121c', fg='#929ab5', anchor='w',
-                 font=('Segoe UI', 9)).pack(fill='x', padx=28, pady=(0, 8))
-        self.chat = scrolledtext.ScrolledText(root, wrap='word', bg='#191d2b', fg='#e8eaf3',
-            insertbackground='white', relief='flat', padx=20, pady=18, font=('Segoe UI', 11), state='disabled')
-        self.chat.pack(fill='both', expand=True, padx=26)
-        self.chat.tag_config('speaker', foreground='#f5c2df', font=('Segoe UI', 10, 'bold'))
-        self.activity_panel = tk.Frame(root, bg='#10121c')
-        style.configure('Work.Treeview', background='#191d2b', fieldbackground='#191d2b', foreground='#e8eaf3', rowheight=23)
-        style.map('Work.Treeview', background=[('selected', '#414d70')])
-        tree_frame = tk.Frame(self.activity_panel, bg='#10121c')
-        tree_frame.pack(fill='x')
-        self.work_tree = ttk.Treeview(tree_frame, columns=('status',), height=4, style='Work.Treeview')
-        self.work_tree.heading('#0', text='Work / action')
-        self.work_tree.heading('status', text='Status')
-        self.work_tree.column('#0', width=550)
-        self.work_tree.column('status', width=150, stretch=False)
-        self.work_tree.pack(side='left', fill='both', expand=True)
-        tree_scroll = ttk.Scrollbar(tree_frame, orient='vertical', command=self.work_tree.yview)
-        tree_scroll.pack(side='right', fill='y')
-        self.work_tree.configure(yscrollcommand=tree_scroll.set)
-        self.work_tree.bind('<<TreeviewSelect>>', self.select_work)
-        self.work_detail = scrolledtext.ScrolledText(self.activity_panel, height=3, wrap='word',
-            bg='#191d2b', fg='#e8eaf3', relief='flat', font=('Segoe UI', 10), state='disabled')
-        self.work_detail.pack(fill='x', pady=4)
-        self.activity = scrolledtext.ScrolledText(self.activity_panel, height=2, bg='#111722', fg='#9eb2c9',
-            relief='flat', font=('Consolas', 9), state='disabled')
-        self.activity.pack(fill='x')
-        bottom = tk.Frame(root, bg='#10121c')
-        bottom.pack(side='bottom', fill='x', padx=26, pady=16)
-        self.entry = tk.Entry(bottom, bg='#24293b', fg='white', insertbackground='white',
-                              relief='flat', font=('Segoe UI', 12))
-        self.entry.pack(side='left', fill='x', expand=True, ipady=14, padx=(0, 10))
-        self.entry.bind('<Return>', lambda e: self.send())
-        self.send_button = self.button(bottom, 'Send  →', self.send)
-        self.send_button.pack(side='right', ipady=7)
-        tk.Label(root, text='Try: Find my physics notes in Downloads  •  Remind me to study in 30 minutes',
-                 bg='#10121c', fg='#929ab5', font=('Segoe UI', 9)).pack(side='bottom', before=bottom, pady=(0, 10))
-        # Allocate the composer and work panel before giving remaining space to chat.
-        self.chat.pack_forget()
-        self.chat.pack(fill='both', expand=True, padx=26)
+        self.motion_enabled = tk.BooleanVar(value=True)
+        self.job_phase = 'idle'
+        self.voice_phase = None
+        self.speech_active = False
+        try:
+            settings = json.loads((DATA / 'ui-settings.json').read_text(encoding='utf-8'))
+            self.motion_enabled.set(settings.get('motion', True) is not False)
+        except (OSError, ValueError, AttributeError):
+            pass
+        build_reactor(self)
         self.say('ASUNA', 'Hi, I’m ASUNA. What shall we work on? Choose Fast or Deep anytime.\n'
                  'I can open apps and folders, find files, read documents, save notes, and manage tasks and reminders. Type help for commands.')
         for m in self.history:
@@ -175,12 +107,29 @@ class Asuna:
         root.after(1000, self.check_reminders)
 
     def button(self, parent, text, command):
-        return tk.Button(parent, text=text, command=command, bg='#30374d', fg='#f3e9f3',
-                         activebackground='#47516e', activeforeground='white', relief='flat',
+        return tk.Button(parent, text=text, command=command, bg='#142b3a', fg='#edf5ff',
+                         activebackground='#234b5b', activeforeground='white', relief='flat',
                          padx=13, pady=7, cursor='hand2', font=('Segoe UI', 10))
 
+    def save_ui_settings(self):
+        self.reactor.paint()
+        try:
+            temporary = DATA / 'ui-settings.tmp'
+            temporary.write_text(json.dumps({'motion': self.motion_enabled.get()}), encoding='utf-8')
+            temporary.replace(DATA / 'ui-settings.json')
+        except OSError as exc:
+            self.log('Could not save interface settings: ' + str(exc))
+
+    def refresh_presence(self):
+        phase = self.voice_phase or ('speaking' if self.speech_active else self.job_phase)
+        title, caption, badge = PRESENCE[phase]
+        self.presence_title.set(title)
+        self.presence_caption.set(caption)
+        self.presence_badge.set(badge)
+        self.reactor.set_mode(phase)
+
     def layout_toolbar(self, event):
-        columns = 6 if event.width >= 820 else 3
+        columns = 6 if event.width >= 650 else 3
         for index, button in enumerate(self.toolbar_buttons):
             button.grid(row=index // columns, column=index % columns, sticky='w', padx=(0, 8), pady=3)
 
@@ -213,6 +162,8 @@ class Asuna:
 
     def stop_speaking(self):
         self.voice.stop_speaking()
+        self.speech_active = False
+        self.refresh_presence()
         if not self.voice.input_busy:
             self.voice_status.set('Speech stopped')
 
@@ -220,12 +171,16 @@ class Asuna:
         if self.voice.input_busy:
             self.voice.stop_recording.set()
             self.record_button.configure(text='Transcribing…', state='disabled')
+            self.voice_phase = 'thinking'
+            self.refresh_presence()
             return
         if self.busy:
             return
         try:
             if self.voice.start_recording(self.voice_device, None if self.voice_language == 'auto' else self.voice_language):
                 self.begin_job('Voice input')
+                self.voice_phase = 'thinking'
+                self.refresh_presence()
                 self.voice_status.set('Starting microphone… Press again to stop. Maximum 30 seconds.')
                 self.record_button.configure(text='Stop recording')
                 self.send_button.configure(state='disabled')
@@ -240,20 +195,20 @@ class Asuna:
         window = self.voice_window = tk.Toplevel(self.root)
         window.title('ASUNA — Voice settings')
         window.geometry('600x350')
-        window.configure(bg='#10121c')
+        window.configure(bg='#080e17')
         tk.Label(window, text='Local voice • no paid API keys', font=('Segoe UI', 14, 'bold'),
-                 bg='#10121c', fg='#f5c2df').pack(anchor='w', padx=20, pady=15)
-        tk.Label(window, text='Voice (installed Windows voices)', bg='#10121c', fg='white').pack(anchor='w', padx=20)
+                 bg='#080e17', fg='#68e7ec').pack(anchor='w', padx=20, pady=15)
+        tk.Label(window, text='Voice (installed Windows voices)', bg='#080e17', fg='white').pack(anchor='w', padx=20)
         self.voice_choice = tk.StringVar(value='Automatic female Windows voice')
         self.voice_choices = ttk.Combobox(window, textvariable=self.voice_choice, state='readonly', width=65,
                                           values=['Automatic female Windows voice'])
         self.voice_choices.pack(anchor='w', padx=20, pady=5)
-        tk.Label(window, text='Microphone', bg='#10121c', fg='white').pack(anchor='w', padx=20)
+        tk.Label(window, text='Microphone', bg='#080e17', fg='white').pack(anchor='w', padx=20)
         self.mic_choice = tk.StringVar(value='Windows default microphone')
         self.mic_choices = ttk.Combobox(window, textvariable=self.mic_choice, state='readonly', width=65,
                                         values=['Windows default microphone'])
         self.mic_choices.pack(anchor='w', padx=20, pady=5)
-        tk.Label(window, text='Recognition language', bg='#10121c', fg='white').pack(anchor='w', padx=20)
+        tk.Label(window, text='Recognition language', bg='#080e17', fg='white').pack(anchor='w', padx=20)
         language_names = {'en': 'English (recommended)', 'mixed': 'Mixed English + Hindi', 'hi': 'Hindi', 'auto': 'Auto (all languages)'}
         language = tk.StringVar(value=language_names[self.voice_language])
         ttk.Combobox(window, textvariable=language, values=list(language_names.values()),
@@ -293,6 +248,9 @@ class Asuna:
         self.activity.see('end')
 
     def begin_job(self, text):
+        self.voice.stop_speaking()
+        self.speech_active = False
+        self.reactor_task.set(text[:120] + ('…' if len(text) > 120 else ''))
         self.job_count += 1
         self.current_job = 'job' + str(self.job_count)
         self.job_started = time.monotonic()
@@ -311,6 +269,16 @@ class Asuna:
             self.select_work()
         if row == self.current_job:
             self.status.set(state + ' • ' + detail.split('\n')[0][:110])
+            if state.startswith('Waiting'):
+                self.job_phase = 'waiting'
+            elif state == 'Failed':
+                self.job_phase = 'error'
+            elif state in ('Completed', 'Cancelled'):
+                self.job_phase = 'idle'
+            else:
+                thinking = ('Request received', 'Understanding', 'Writing', 'Transcribing')
+                self.job_phase = 'thinking' if detail.startswith(thinking) else 'working'
+            self.refresh_presence()
 
     def finish_job(self, state, detail):
         elapsed = time.monotonic() - getattr(self, 'job_started', time.monotonic())
@@ -332,9 +300,10 @@ class Asuna:
     def show_activity(self, visible):
         self.activity_visible = visible
         if visible:
-            self.activity_panel.pack(side='bottom', before=self.chat, fill='x', padx=26, pady=(10, 0))
+            self.activity_panel.pack(side='bottom', before=self.chat, fill='x', padx=10, pady=(4, 10))
         else:
             self.activity_panel.pack_forget()
+        self.layout_activity()
 
     def persist(self):
         try:
@@ -348,6 +317,11 @@ class Asuna:
     def clear(self):
         if self.busy or self.voice.input_busy:
             return
+        self.stop_speaking()
+        self.job_phase = 'idle'
+        self.voice_phase = None
+        self.reactor_task.set('Waiting for your request')
+        self.refresh_presence()
         self.history = []
         self.persist()
         self.personal.reset_context()
@@ -617,9 +591,17 @@ class Asuna:
                 if kind == 'log':
                     self.log(value)
                 elif kind == 'voice_recording':
+                    self.voice_phase = 'listening'
+                    self.reactor.set_level(0)
+                    self.refresh_presence()
                     self.voice_status.set('Recording locally… Press Stop recording when finished. Maximum 30 seconds.')
                     self.update_job('Working', 'Recording microphone audio locally.')
+                elif kind == 'voice_level':
+                    if self.voice_phase == 'listening':
+                        self.reactor.set_level(value)
                 elif kind == 'voice_status':
+                    self.voice_phase = 'thinking'
+                    self.refresh_presence()
                     self.voice_status.set(value)
                     if self.voice.input_busy:
                         self.update_job('Working', value)
@@ -627,7 +609,10 @@ class Asuna:
                     generation, text = value
                     if generation == self.voice.speech_generation and not self.voice.input_busy:
                         self.voice_status.set(text)
+                        self.speech_active = text == 'Speaking…'
+                        self.refresh_presence()
                 elif kind == 'voice_transcript':
+                    self.voice_phase = None
                     self.record_button.configure(text='Record', state='normal')
                     self.send_button.configure(state='normal')
                     draft = self.entry.get().strip()
@@ -635,8 +620,10 @@ class Asuna:
                     self.entry.insert(0, (draft + ' ' if draft else '') + value)
                     self.entry.focus_set()
                     self.voice_status.set('Transcript ready — review it, then press Send. Nothing has been sent yet.')
-                    self.finish_job('Completed', 'Transcribed locally: ' + value + '\nReview the input box before sending.')
+                    self.finish_job('Waiting for you', 'Transcribed locally: ' + value + '\nReview the input box before sending.')
                 elif kind == 'voice_error':
+                    self.voice_phase = None
+                    self.speech_active = False
                     self.voice_status.set(value)
                     self.log('Voice: ' + value)
                     if not self.busy:
@@ -644,6 +631,9 @@ class Asuna:
                         self.send_button.configure(state='normal')
                         if self.current_job:
                             self.finish_job('Failed', value)
+                        else:
+                            self.job_phase = 'error'
+                    self.refresh_presence()
                 elif kind == 'voice_options':
                     voices, microphones, warnings = value
                     if self.voice_window and self.voice_window.winfo_exists():

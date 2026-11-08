@@ -56,6 +56,7 @@ class VoiceTests(unittest.TestCase):
             self.voice.input_busy = True
             self.voice.capture(2, 'hi')
         self.assertIn(('voice_transcript', 'open youtube'), self.events())
+        self.assertTrue(any(k == 'voice_level' and 0 < v <= 1 for k, v in self.events()))
         self.assertEqual(transcribe.call_args.args[1], 'hi')
         self.assertFalse(self.voice.input_busy)
         self.assertFalse(list(self.path.iterdir()))

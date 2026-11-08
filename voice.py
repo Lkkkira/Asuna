@@ -104,14 +104,22 @@ class VoiceController:
             sd.check_input_settings(device=device, channels=1, dtype='int16', samplerate=rate)
             chunks, errors = [], []
             frames = 0
+            level_frame = -rate
 
             def callback(data, count, timing, status):
-                nonlocal frames
+                nonlocal frames, level_frame
                 if status:
                     errors.append(str(status))
                 remaining = max(0, 30 * rate - frames)
-                chunks.append(bytes(data)[:remaining * 2])
+                chunk = bytes(data)[:remaining * 2]
+                chunks.append(chunk)
                 frames += min(remaining, count)
+                # Throttle visual levels to ~12 Hz; audio never leaves this process.
+                if chunk and frames - level_frame >= rate // 12:
+                    samples = np.frombuffer(chunk, dtype=np.int16).astype(np.float32) / 32768.0
+                    level = min(1.0, float(np.sqrt(np.mean(samples * samples))) * 8)
+                    self.events.put(('voice_level', level))
+                    level_frame = frames
                 if frames >= 30 * rate:
                     self.stop_recording.set()
 
