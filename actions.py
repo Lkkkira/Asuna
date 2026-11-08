@@ -4,7 +4,7 @@ import os
 import re
 import stat
 import subprocess
-import webbrowser
+from browser import open_chrome
 import zipfile
 import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta
@@ -107,10 +107,9 @@ class Actions:
             if name == 'settings':
                 os.startfile('ms-settings:')
                 return 'Opened Windows Settings.'
-            if name in ('browser', 'web browser'):
-                if not webbrowser.open('https://www.google.com'):
-                    raise OSError('Windows could not open your default browser.')
-                return 'Requested your default browser.'
+            if name in ('browser', 'web browser', 'chrome', 'google chrome'):
+                open_chrome('https://www.google.com')
+                return 'Requested Google Chrome.'
             if name in ('downloads', 'documents', 'desktop'):
                 # Use Windows known folders, including redirected Documents/Desktop.
                 import ctypes
@@ -130,14 +129,12 @@ class Actions:
                 os.startfile(path)
                 return 'Opened ' + name + '.'
             if target.startswith(('https://', 'http://')) and urlparse(target).hostname:
-                if not webbrowser.open(target):
-                    raise OSError('Windows could not open your default browser.')
-                return 'Requested your browser to open ' + target
+                open_chrome(target)
+                return 'Requested Chrome to open ' + target
         match = re.fullmatch(r'search (?:the )?web for\s*:?\s*(.+)', raw, re.I)
         if match:
-            if not webbrowser.open('https://www.google.com/search?q=' + quote_plus(match[1])):
-                raise OSError('Windows could not open your default browser.')
-            return 'Opened web search in your browser. I have not read the results.'
+            open_chrome('https://www.google.com/search?q=' + quote_plus(match[1]))
+            return 'Opened web search in Chrome. I have not read the results.'
         match = re.fullmatch(r'(?:find file|search files)\s*:\s*(.+)', raw, re.I)
         if match:
             return self.find(match[1])

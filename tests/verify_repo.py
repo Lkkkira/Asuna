@@ -15,13 +15,13 @@ with tempfile.TemporaryDirectory() as folder:
     assert 'not enabled' in bot.execute_query('shutdown')
     assert 'algorithm:' in bot.execute_query('define: algorithm').lower()
     assert 'Did you mean' in bot.execute_query('define: algorthm')
-    with patch('jarvis.webbrowser.open_new_tab') as browser:
+    with patch('jarvis.open_chrome') as browser:
         bot.execute_query(normalize('ASUNA, please open youtube'))
         browser.assert_called_once_with('https://youtube.com')
-    with patch('jarvis.webbrowser.open_new_tab') as browser:
+    with patch('jarvis.open_chrome') as browser:
         bot.execute_query('search youtube: Python & AI')
         browser.assert_called_once_with('https://www.youtube.com/results?search_query=Python+%26+AI')
-    with patch('jarvis.webbrowser.open_new_tab') as browser:
+    with patch('jarvis.open_chrome') as browser:
         bot.execute_query('location: New Delhi')
         assert 'New+Delhi' in browser.call_args[0][0]
     bot.execute_query('remember that: exam Friday')

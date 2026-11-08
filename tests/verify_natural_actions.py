@@ -5,6 +5,7 @@ import sys
 import tempfile
 import time
 import unittest
+import gc
 from pathlib import Path
 from unittest.mock import patch
 
@@ -25,9 +26,15 @@ class NaturalActions(unittest.TestCase):
         self.app = asuna.Asuna(self.root)
 
     def tearDown(self):
+        # Dispose Tk references on the UI thread before the next worker can collect them.
+        time.sleep(.02)
+        self.app.voice.close()
         for callback in self.root.tk.call('after', 'info'):
             self.root.after_cancel(callback)
         self.root.destroy()
+        self.app = None
+        self.root = None
+        gc.collect()
         asuna.DATA = self.original_data
         self.temp.cleanup()
 
@@ -44,7 +51,7 @@ class NaturalActions(unittest.TestCase):
 
     def test_multi_action_with_factual_results(self):
         plan = plan_of(step('search_youtube', 'Python tutorials'), step('add_task', 'Learn Python'))
-        with patch('asuna.make_plan', return_value=plan), patch('jarvis.webbrowser.open_new_tab') as browser:
+        with patch('asuna.make_plan', return_value=plan), patch('jarvis.open_chrome') as browser:
             self.app.submit('Open YouTube and look for Python tutorials, then put learning Python on my list')
             self.wait()
         browser.assert_called_once()
@@ -136,7 +143,7 @@ class NaturalActions(unittest.TestCase):
         self.assertIn('Ollama offline', self.app.chat.get('1.0', 'end'))
 
     def test_browser_rejection_is_failed_not_completed(self):
-        with patch('jarvis.webbrowser.open_new_tab', return_value=False):
+        with patch('jarvis.open_chrome', side_effect=OSError('Chrome could not open')):
             self.app.submit('open youtube')
             self.wait()
         self.assertEqual(self.statuses(), ['Failed'])

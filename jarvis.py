@@ -6,7 +6,7 @@ preserved in jarvis_legacy.py. Importing this module starts no devices/network.
 import json
 import re
 import subprocess
-import webbrowser
+from browser import open_chrome
 from datetime import datetime
 from difflib import get_close_matches
 from pathlib import Path
@@ -29,9 +29,8 @@ class Jarvis:
                  'google': 'https://google.com', 'stackoverflow': 'https://stackoverflow.com',
                  'github': 'https://github.com'}
         if key.startswith('open ') and key[5:] in sites:
-            if not webbrowser.open_new_tab(sites[key[5:]]):
-                raise OSError('Windows could not open your default browser.')
-            return 'Requested your default browser to open ' + key[5:] + '.'
+            open_chrome(sites[key[5:]])
+            return 'Requested Chrome to open ' + key[5:] + '.'
         if key in ('what time is it', 'the time', 'time', 'tell me the time'):
             return 'The time is ' + datetime.now().strftime('%I:%M %p') + '.'
         if key in ('date', 'what is the date', "what is today's date"):
@@ -72,9 +71,8 @@ class Jarvis:
 
     @staticmethod
     def open_search(base, term, site):
-        if not webbrowser.open_new_tab(base + quote_plus(term)):
-            raise OSError('Windows could not open your default browser.')
-        return f'Opened {site} search for “{term}” in your browser. I have not read the results.'
+        open_chrome(base + quote_plus(term))
+        return f'Opened {site} search for “{term}” in Chrome. I have not read the results.'
 
     def translate(self, word):
         # Reuses upstream data.json and its difflib spelling suggestion behavior.

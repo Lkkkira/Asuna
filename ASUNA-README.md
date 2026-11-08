@@ -21,7 +21,7 @@ Use Show / hide activity to view requests and their individual actions, status, 
 | Request | Result |
 | --- | --- |
 | `help` | Show all supported commands |
-| `open youtube` | Open the default browser |
+| `open youtube` / `open chrome` | Open Google Chrome |
 | `search youtube: Python basics` | Open YouTube search results |
 | `wikipedia: photosynthesis` | Open Wikipedia search results |
 | `location: Delhi` | Open Maps results |
@@ -66,7 +66,7 @@ Recent 20 conversation messages are supplied to either model, within the model's
 
 - Refactored jarvis.py's command routing into a text-returning engine with no import-time device/network activity.
 - Reused website opening, YouTube/Maps searches, time, remember/recall, and dictionary matching logic plus the original data.json dictionary.
-- Replaced fixed Chrome/music/editor paths with the default browser and Windows app commands.
+- Replaced fixed user-specific music/editor paths with Windows app commands. Web actions now locate Chrome explicitly in standard install locations or Windows App Paths, rather than using the Windows default browser.
 - Added the working ASUNA interface, Fast/Deep Ollama chat, background workers, local tasks, scoped file search and document reading.
 - Added structured natural-language planning, follow-up clarification, and a status/results work view. Model planning receives request context, not attached document text. The answer-writing stage cannot execute actions.
 - Replaced the placeholder screenshot destination with timestamped PNGs using built-in Windows screen capture.

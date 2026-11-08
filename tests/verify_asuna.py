@@ -35,7 +35,7 @@ with tempfile.TemporaryDirectory() as folder:
     with patch('actions.subprocess.Popen') as launch:
         a.execute('Can you open paint')
         launch.assert_called_once_with(['mspaint.exe'], shell=False)
-    with patch('actions.webbrowser.open') as browser:
+    with patch('actions.open_chrome') as browser:
         a.execute('search web for: photosynthesis & sunlight')
         assert 'photosynthesis+%26+sunlight' in browser.call_args[0][0]
     assert 'could not match' in a.execute('open unknown-program.exe')

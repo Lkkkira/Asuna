@@ -12,7 +12,7 @@ TOOLS = ('open_app', 'open_site', 'search_web', 'search_youtube', 'search_maps',
          'add_routine', 'update_routine', 'pause_routine', 'resume_routine', 'show_routines', 'daily_overview')
 FOLDERS = ('chosen', 'downloads', 'documents', 'desktop', 'pick')
 APPS = ('calculator', 'notepad', 'paint', 'explorer', 'task manager', 'settings',
-        'browser', 'downloads', 'documents', 'desktop')
+        'browser', 'chrome', 'google chrome', 'downloads', 'documents', 'desktop')
 SITES = {'youtube': 'https://youtube.com', 'google': 'https://google.com',
          'amazon': 'https://amazon.com', 'stackoverflow': 'https://stackoverflow.com',
          'github': 'https://github.com'}
@@ -41,7 +41,7 @@ Use clarify for missing information, ambiguity, unsupported actions, or requests
 capabilities not listed. Ask a short concrete question. Never invent IDs, times, filenames,
 URLs, task content or unrequested side effects. Clarification must have NO steps.
 Use only these tools:
-open_app: text one of calculator, notepad, paint, explorer, task manager, settings, browser,
+open_app: text one of calculator, notepad, paint, explorer, task manager, settings, browser, chrome,
 downloads, documents, desktop.
 open_site: text a website name youtube/google/amazon/stackoverflow/github or an explicit
 http(s) URL the user supplied. To search a site, use its search tool instead of opening it first.
