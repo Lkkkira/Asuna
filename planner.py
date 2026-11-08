@@ -55,6 +55,9 @@ browser_open_item: text='link'|'video'|'result', number=1-based position on the 
 Use this for 'open the first video/result'; do not confuse with local-file open_result.
 browser_click: number an observed browser element ID or text its unique exact label. Do not
 invent labels/IDs. Generic buttons and sensitive links require an in-app review.
+For an explicit request to like the current YouTube video, use browser_click text='Like this video',
+number=0. The browser resolves the video's own Like control and checks whether it is already liked.
+Do not use a comment's Like button. The action always requires review before changing the video reaction.
 browser_fill: text is JSON {"field":"observed exact field label","value":"user-supplied text"},
 number is its observed ID or 0. Requires in-app review. Password/payment/upload fields are manual.
 browser_back/browser_forward/browser_reload/browser_tabs: no arguments.
@@ -243,6 +246,8 @@ def exact_plan(text):
         return plan_of(step(browser_fixed[key]))
     if key in ('summarize this page', 'summarize page', 'summarise this page'):
         return {**plan_of(step('browser_read')), 'needs_reply': True}
+    if re.fullmatch(r'(?:like|thumbs up|give (?:a |it a )?thumbs up to)(?: (?:the|this|that))? (?:video|short)', key):
+        return plan_of(step('browser_click', 'Like this video'))
     if key in ('pause', 'pause video', 'resume', 'resume video', 'play video', 'mute', 'unmute'):
         command = 'pause' if key.startswith('pause') else 'play' if key.startswith(('play', 'resume')) else key
         return plan_of(step('browser_media', command))

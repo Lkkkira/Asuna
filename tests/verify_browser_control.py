@@ -12,7 +12,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from browser_control import BrowserSession, web_url
+from browser_control import BrowserSession, web_url, video_like_label, youtube_video
 from planner import exact_plan, validate_plan, plan_of, step
 from actions import Actions
 from jarvis import Jarvis
@@ -25,6 +25,18 @@ if LIVE:
 
 
 class PlanTests(unittest.TestCase):
+    def test_like_video_has_a_deterministic_reviewed_action(self):
+        for text in ('like the video', 'like this video', 'thumbs up the video', 'give a thumbs up to the video'):
+            self.assertEqual(exact_plan(text)['steps'], [step('browser_click', 'Like this video')])
+        self.assertIsNone(exact_plan('I like the video'))
+        self.assertTrue(video_like_label('like this video along with 191,712 other people'))
+        for text in ('Dislike this video', 'Like this comment along with 10 other people', 'I like this video'):
+            self.assertFalse(video_like_label(text))
+        self.assertTrue(youtube_video('https://www.youtube.com/watch?v=sample'))
+        self.assertTrue(youtube_video('https://www.youtube.com/shorts/sample'))
+        for url in ('https://youtube.com.evil.test/watch?v=sample','https://www.youtube.com/','https://www.youtube.com/watch?list=sample'):
+            self.assertFalse(youtube_video(url))
+
     def test_browser_commands_do_not_route_to_file_results(self):
         self.assertEqual(exact_plan('open the first video')['steps'][0], step('browser_open_item', 'video', 1))
         self.assertEqual(exact_plan('open second result')['steps'][0], step('browser_open_item', 'result', 2))
@@ -116,6 +128,15 @@ class BrowserUI(unittest.TestCase):
         session.call.assert_called_once_with('click', 'Submit', 0)
         self.assertEqual(self.app.work_tree.set('job1', 'status'), 'Cancelled')
 
+    def test_declined_video_like_never_sends_an_approve_command(self):
+        with patch('browser_control.session') as session, patch('asuna.messagebox.askyesno', return_value=False):
+            session.cached.return_value = {'token': 'fixture', 'items': []}
+            session.call.return_value = {'confirm': 'Like this fixture video?', 'ticket': 'ticket'}
+            self.app.submit('like the video')
+            self.wait()
+        session.call.assert_called_once_with('click', 'Like this video', 0)
+        self.assertEqual(self.app.work_tree.set('job1', 'status'), 'Cancelled')
+
 
 HTML = '''<!doctype html><title>ASUNA fixture</title><main>
 <h1>Example article</h1><p>Plants turn sunlight into energy.</p>
@@ -126,6 +147,9 @@ HTML = '''<!doctype html><title>ASUNA fixture</title><main>
 <button onclick="document.querySelector('#answer').textContent='submitted'">Submit</button>
 <label>Password<input type="password" name="password"></label>
 <p id="answer">not submitted</p><video></video>
+<button id="video-like" aria-label="like this video along with 191,712 other people" aria-pressed="false" onclick="this.setAttribute('aria-pressed','true')">191K</button>
+<button aria-label="Like this comment along with 10 other people" aria-pressed="false">10</button>
+<button aria-label="Dislike this video" aria-pressed="false">Dislike</button>
 </main>'''
 
 
@@ -225,6 +249,16 @@ class BrowserIntegration(unittest.TestCase):
         self.session.call('scroll', 'bottom')
         self.assertEqual(self.session.cached()['items'][0]['name'], 'Footer link')
         self.assertIn('/footer', self.session.call('click', 'Footer link')['detail'])
+
+    def test_like_video_is_reviewed_and_does_not_toggle_an_existing_like(self):
+        # Only the site gate is replaced: all DOM work stays on the local fixture.
+        with patch('browser_control.youtube_video', return_value=True):
+            review = self.session.call('click','Like this video')
+            self.assertIn('191,712',review['confirm'])
+            self.assertIn('Liked the video',self.session.call('approve',review['ticket'])['detail'])
+            result = self.session.call('click','Like this video')
+            self.assertEqual(result['detail'],'This video is already liked.')
+            self.assertNotIn('confirm',result)
 
 
 if __name__ == '__main__':

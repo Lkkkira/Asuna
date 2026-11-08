@@ -86,6 +86,40 @@ class ExtensionPageTests(unittest.TestCase):
         state = self.act('media',value='mute')
         self.assertTrue(state['muted'])
 
+    def like_fixture(self, pressed='false'):
+        self.page.set_content('''<button id="like" aria-label="like this video along with 191,712 other people" aria-pressed="''' + pressed + '''"
+            onclick="window.clicks=(window.clicks||0)+1;this.setAttribute('aria-pressed',this.getAttribute('aria-pressed')==='true'?'false':'true')">191K</button>
+            <button aria-label="Like this comment along with 10 other people" aria-pressed="false">10</button>
+            <button aria-label="Dislike this video" aria-pressed="false">Dislike</button>''')
+        self.snapshot = self.page.evaluate("observePage('abcdef0123456789')")
+        return self.item('like this video along with 191,712 other people')
+
+    def test_like_toggles_only_the_video_and_returns_verified_state(self):
+        item = self.like_fixture()
+        self.assertEqual(item['pressed'],'false')
+        # Counts change independently of the user's reviewed video/action.
+        self.page.locator('#like').evaluate("e=>e.setAttribute('aria-label','like this video along with 191,713 other people')")
+        self.assertTrue(self.act('like',item)['liked'])
+        self.assertEqual(self.page.locator('#like').get_attribute('aria-pressed'),'true')
+        self.assertEqual(self.page.evaluate('window.clicks'),1)
+        self.assertTrue(self.act('like',item)['alreadyLiked'])
+        self.assertEqual(self.page.evaluate('window.clicks'),1)
+
+    def test_like_never_clicks_a_comment_or_unknown_state(self):
+        item = self.like_fixture()
+        with self.assertRaisesRegex(Exception,'not the video Like'):
+            self.act('like',self.item('Like this comment along with 10 other people'))
+        self.page.locator('#like').evaluate("e=>e.removeAttribute('aria-pressed')")
+        with self.assertRaisesRegex(Exception,'state is unknown'):
+            self.act('like',item)
+        self.assertIsNone(self.page.evaluate('window.clicks'))
+
+    def test_like_button_stays_discoverable_after_long_comment_lists(self):
+        self.like_fixture()
+        self.page.locator('#like').evaluate("e=>{for(let i=0;i<180;i++){let b=document.createElement('button');b.textContent='Comment '+i;document.body.prepend(b)}}")
+        snapshot = self.page.evaluate("observePage('abcdef0123456789')")
+        self.assertEqual(snapshot['items'][0]['name'],'like this video along with 191,712 other people')
+
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)

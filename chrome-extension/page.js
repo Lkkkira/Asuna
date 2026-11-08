@@ -12,17 +12,31 @@ async function runPageCommand(command, args) {
 }
 async function actOnPage(operation, payload) {
   const visible = e => !!(e && e.getClientRects().length && getComputedStyle(e).visibility !== 'hidden' && !e.disabled);
+  const likeLabel = name => /^(?:like|unlike)(?: this| the)? video(?: along with .+ other (?:people|person))?[.!]?$/i.test(name.trim());
   if (payload.url && location.href !== payload.url) throw Error('The page changed. Read it again.');
-  if (['click', 'fill', 'search'].includes(operation)) {
+  if (['click', 'fill', 'search', 'like'].includes(operation)) {
     const item = payload.item;
     if (!item || !/^[a-f0-9-]+$/.test(item.marker)) throw Error('Invalid observed target.');
     const matches = document.querySelectorAll('[data-asuna-target="' + item.marker + '"]');
     if (matches.length !== 1 || !visible(matches[0])) throw Error('That control changed. Read the page again.');
     const e = matches[0], tag = e.tagName.toLowerCase();
     const name = (e.getAttribute('aria-label') || e.labels?.[0]?.innerText || e.innerText || e.getAttribute('placeholder') || e.getAttribute('title') || (['submit','button','reset'].includes(e.type) ? e.value : '') || e.name || e.id || '').trim().replace(/\s+/g, ' ').slice(0,180);
-    if (name !== item.name || (e.type || '') !== item.type || (tag === 'a' ? e.href : '') !== item.href)
+    const sameName = name === item.name || operation === 'like' && likeLabel(name) && likeLabel(item.name);
+    if (!sameName || (e.type || '') !== item.type || (tag === 'a' ? e.href : '') !== item.href)
       throw Error('That control changed. Read the page again.');
-    if (operation === 'click') {
+    if (operation === 'like') {
+      if (item.role !== 'button' || !likeLabel(name)) throw Error('This is not the video Like control. Read the page again.');
+      if (e.getAttribute('aria-pressed') === 'true' || /^unlike\b/i.test(name)) return {alreadyLiked:true};
+      if (e.getAttribute('aria-pressed') !== 'false') throw Error('The video Like state is unknown. Check it in Chrome.');
+      e.click();
+      const deadline = performance.now() + 5000;
+      while (e.getAttribute('aria-pressed') !== 'true' && !/^unlike\b/i.test(e.getAttribute('aria-label') || '')) {
+        if ((payload.url && location.href !== payload.url) || !e.isConnected || performance.now() >= deadline)
+          throw Error('The Like button was clicked, but YouTube did not confirm its state. Check Chrome before retrying. Sign in manually if prompted.');
+        await new Promise(resolve => setTimeout(resolve,100));
+      }
+      return {liked:true};
+    } else if (operation === 'click') {
       if (tag === 'a' && !/^https?:\/\//.test(e.href)) throw Error('Only ordinary web links are supported.');
       e.click();
     } else {
@@ -79,8 +93,9 @@ function observePage(token) {
  const visible = e => !!(e.getClientRects().length && getComputedStyle(e).visibility !== 'hidden' && !e.disabled && !e.closest('[aria-hidden="true"]'));
  const seen = new Set(), items = [];
  const inView=e=>{const r=e.getBoundingClientRect();return r.bottom>0&&r.top<innerHeight&&r.right>0&&r.left<innerWidth;};
+ const videoLike=e=>(e.tagName==='BUTTON'||e.getAttribute('role')==='button')&&/^(?:like|unlike)(?: this| the)? video(?: along with .+ other (?:people|person))?[.!]?$/i.test((e.getAttribute('aria-label')||e.getAttribute('title')||e.innerText||'').trim());
  const nodes=[...document.querySelectorAll('a[href],button,input:not([type=hidden]),textarea,select,[role=button],[contenteditable=true]')];
- nodes.sort((a,b)=>Number(inView(b))-Number(inView(a)));
+ nodes.sort((a,b)=>Number(videoLike(b))-Number(videoLike(a))||Number(inView(b))-Number(inView(a)));
  for (const e of nodes) {
   if (!visible(e)) continue;
   const tag=e.tagName.toLowerCase(), buttonInput=tag==='input'&&['submit','button','reset'].includes(e.type);
@@ -94,7 +109,7 @@ function observePage(token) {
   const ad=!!e.closest('ytd-ad-slot-renderer,ytd-promoted-video-renderer,[data-text-ad],[data-ad],.ads,.sponsored');
   const video=!ad && (/youtube\.com\/watch\?|youtu\.be\/|vimeo\.com\/\d|dailymotion\.com\/video\/|\.(mp4|webm)(\?|$)/i.test(href));
   const result=!ad && (video || !!e.querySelector('h2,h3') || !!e.closest('.search-result,.result,.b_algo,.tF2Cxc,ytd-video-renderer'));
-  items.push({id:items.length+1,role,name,href,type:e.type||'',marker,video,result});
+  items.push({id:items.length+1,role,name,href,type:e.type||'',marker,video,result,pressed:e.getAttribute('aria-pressed')});
   if(items.length>=120) break;
  }
  return {url:location.href,title:document.title,items,text:(document.body?.innerText||'').slice(0,12000)};

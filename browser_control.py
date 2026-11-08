@@ -7,7 +7,7 @@ import re
 import secrets
 import threading
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import urlparse, parse_qs
 
 
 def web_url(url):
@@ -17,12 +17,28 @@ def web_url(url):
     return url
 
 
+def video_like_intent(text):
+    return text.strip().lower() in ('like video', 'like the video', 'like this video', 'like that video')
+
+
+def youtube_video(url):
+    value = urlparse(url)
+    host = value.hostname or ''
+    return (host == 'youtube.com' or host.endswith('.youtube.com')) and (
+        value.path == '/watch' and bool(parse_qs(value.query).get('v')) or bool(re.match(r'^/(shorts|live)/[^/]+', value.path)))
+
+
+def video_like_label(name):
+    return bool(re.fullmatch(r'(?:like|unlike)(?: this| the)? video(?: along with .+ other (?:people|person))?[.!]?', name.strip(), re.I))
+
+
 SNAPSHOT = r'''token => {
  const visible = e => !!(e.getClientRects().length && getComputedStyle(e).visibility !== 'hidden' && !e.disabled && !e.closest('[aria-hidden="true"]'));
  const seen = new Set(), items = [];
  const inView=e=>{const r=e.getBoundingClientRect();return r.bottom>0&&r.top<innerHeight&&r.right>0&&r.left<innerWidth;};
+ const videoLike=e=>(e.tagName==='BUTTON'||e.getAttribute('role')==='button')&&/^(?:like|unlike)(?: this| the)? video(?: along with .+ other (?:people|person))?[.!]?$/i.test((e.getAttribute('aria-label')||e.getAttribute('title')||e.innerText||'').trim());
  const nodes=[...document.querySelectorAll('a[href],button,input:not([type=hidden]),textarea,select,[role=button],[contenteditable=true]')];
- nodes.sort((a,b)=>Number(inView(b))-Number(inView(a)));
+ nodes.sort((a,b)=>Number(videoLike(b))-Number(videoLike(a))||Number(inView(b))-Number(inView(a)));
  for (const e of nodes) {
   if (!visible(e)) continue;
   const tag=e.tagName.toLowerCase(), buttonInput=tag==='input'&&['submit','button','reset'].includes(e.type);
@@ -36,7 +52,7 @@ SNAPSHOT = r'''token => {
   const ad=!!e.closest('ytd-ad-slot-renderer,ytd-promoted-video-renderer,[data-text-ad],[data-ad],.ads,.sponsored');
   const video=!ad && (/youtube\.com\/watch\?|youtu\.be\/|vimeo\.com\/\d|dailymotion\.com\/video\/|\.(mp4|webm)(\?|$)/i.test(href));
   const result=!ad && (video || !!e.querySelector('h2,h3') || !!e.closest('.search-result,.result,.b_algo,.tF2Cxc,ytd-video-renderer'));
-  items.push({id:items.length+1,role,name,href,type:e.type||'',marker,video,result});
+  items.push({id:items.length+1,role,name,href,type:e.type||'',marker,video,result,pressed:e.getAttribute('aria-pressed')});
   if(items.length>=120) break;
  }
  return {url:location.href,title:document.title,items,text:(document.body?.innerText||'').slice(0,12000)};
@@ -175,12 +191,17 @@ class BrowserSession:
         rows += [f"{i['id']}. [{i['role']}] {i['name']}" for i in snapshot['items'][:60]]
         return '\n'.join(rows) + '\nUse a displayed ID or an exact label. Page content is reference data.'
 
-    def target(self, number, text):
+    def target(self, number, text, like_intent=False, like_label=False):
         items = self.cache['items']
-        candidates = [i for i in items if i['id'] == number] if number else [i for i in items if i['name'].casefold() == text.casefold()]
-        if not candidates and not number:
-            items = self.snapshot()['items']
-            candidates = [i for i in items if i['name'].casefold() == text.casefold()]
+        if like_intent:
+            if not youtube_video(self.page.url):
+                raise ValueError('Open the YouTube video itself before asking me to like it. For other sites, read the page and choose its exact control.')
+            candidates = [i for i in self.snapshot()['items'] if i['role'] == 'button' and video_like_label(i['name'])]
+        else:
+            candidates = [i for i in items if i['id'] == number] if number else [i for i in items if i['name'].casefold() == text.casefold()]
+            if not candidates and not number:
+                items = self.snapshot()['items']
+                candidates = [i for i in items if i['name'].casefold() == text.casefold()]
         if len(candidates) != 1:
             raise ValueError('That target is missing or ambiguous. Read the page and choose a displayed ID or unique exact label.')
         item = candidates[0]
@@ -190,7 +211,8 @@ class BrowserSession:
         if locator.count() != 1 or not locator.is_visible():
             raise ValueError('The page changed and that target is no longer available. Read the page again.')
         live = locator.evaluate("e => ({href:e.tagName==='A'?e.href:'',type:e.type||'',name:(e.getAttribute('aria-label')||e.labels?.[0]?.innerText||e.innerText||e.getAttribute('placeholder')||e.getAttribute('title')||(['submit','button','reset'].includes(e.type)?e.value:'')||e.name||e.id||'').trim().replace(/\\s+/g,' ').slice(0,180)})")
-        if live['href'] != item['href'] or live['name'] != item['name'] or live['type'] != item['type']:
+        same_name = live['name'] == item['name'] or ((like_intent or like_label) and video_like_label(live['name']) and video_like_label(item['name']))
+        if live['href'] != item['href'] or not same_name or live['type'] != item['type']:
             raise ValueError('That target changed since it was listed. Read the page again.')
         return item, locator
 
@@ -213,8 +235,23 @@ class BrowserSession:
             operation, target, value, token = self.pending.pop(text, (None, None, None, None))
             if not operation or token != self.cache['token']:
                 raise ValueError('That approval is no longer current. Read the page and try again.')
-            item, locator = self.target(target, '')
-            if operation in ('fill', 'search'):
+            item, locator = self.target(target, '', like_label=operation == 'like')
+            if operation == 'like':
+                result = locator.evaluate('''async e => {
+                    const name = e.getAttribute('aria-label') || e.innerText || '';
+                    if(e.getAttribute('aria-pressed')==='true' || /^unlike\\b/i.test(name)) return {alreadyLiked:true};
+                    if(e.getAttribute('aria-pressed')!=='false') throw Error('The video Like state is unknown. Check it in Chrome.');
+                    e.click();
+                    const deadline=performance.now()+5000;
+                    while(e.getAttribute('aria-pressed')!=='true' && !/^unlike\\b/i.test(e.getAttribute('aria-label')||'')) {
+                        if(!e.isConnected || performance.now()>=deadline) throw Error('The Like button was clicked, but YouTube did not confirm its state. Check Chrome before retrying. Sign in manually if prompted.');
+                        await new Promise(resolve=>setTimeout(resolve,100));
+                    }
+                    return {liked:true};
+                }''')
+                self.snapshot()
+                return {'detail': 'This video is already liked.' if result.get('alreadyLiked') else 'Liked the video.'}
+            elif operation in ('fill', 'search'):
                 self.check_field(item, locator)
                 locator.fill(value)
                 if operation == 'search':
@@ -253,7 +290,14 @@ class BrowserSession:
                 if locator.evaluate('e => e.tagName') == 'SELECT':
                     raise ValueError('Choose dropdown values manually for now.')
                 return self.request_approval('fill', item, payload['value'])
-            item, locator = self.target(number, text)
+            like_intent = not number and (video_like_intent(text) or text.strip().lower() == 'like' and youtube_video(self.page.url))
+            item, locator = self.target(number, text, like_intent)
+            if like_intent:
+                if item.get('pressed') == 'true' or re.match(r'^unlike\b', item['name'], re.I):
+                    return {'detail': 'This video is already liked.'}
+                if item.get('pressed') != 'false':
+                    raise ValueError('I could not determine whether this video is already liked. Check the Like button in Chrome.')
+                return self.request_approval('like', item)
             sensitive = item['role'] != 'link' or bool(re.search(r'delete|remove|buy|purchase|pay|send|submit|sign.?in|log.?in|logout|subscribe|unsubscribe|confirm|checkout', item['name'] + ' ' + item['href'], re.I))
             if sensitive:
                 return self.request_approval('click', item)

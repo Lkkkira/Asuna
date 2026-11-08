@@ -35,8 +35,11 @@ Try these requests:
 | `scroll down` / `scroll up` / `scroll top` / `scroll bottom` | Move around the page |
 | `show browser tabs` / `switch to tab 2` | Inspect/switch controlled tabs |
 | `pause` / `resume` / `mute` / `unmute` | Control the first HTML video/audio on the current page |
+| `like the video` / `like this video` | Find the current YouTube video's Like control and ask for review before liking it |
 
 Generic buttons, sensitive links, and field entry require a concrete review in ASUNA. Password, payment-code and upload fields are manual. Targets are checked against the observed page; navigation invalidates old numbered targets. After a page changes, read it again before choosing its IDs. Missing/ambiguous targets fail with details instead of using guessed coordinates.
+
+The Like command recognizes English YouTube video labels that include changing reaction counts. It excludes comment Like buttons and Dislike, checks the toggle state, and reports already-liked videos without clicking them again. It requires a unique identifiable control on a YouTube video/Shorts page. The review identifies the actual video and button. If sign-in is required or YouTube does not confirm the reaction, check Chrome manually before retrying. Reload the extension after updates and restart ASUNA when its Python files change.
 
 Visible webpage text is untrusted reference data. It cannot become code, change the tool allowlist, or grant permission. Browser summaries use the local model and may be inaccurate. The planner sees a bounded list of observed controls, not the full page body; answer generation can read the page body but cannot execute actions.
 
