@@ -6,7 +6,7 @@ const path = require('node:path');
 const {webcrypto} = require('node:crypto');
 const folder = path.join(__dirname,'..','chrome-extension');
 const listeners = {};
-let url = 'https://fixture.test/', activeId = 1, calls = [];
+let url = 'https://fixture.test/', activeId = 1, calls = [], scriptFailure = null;
 const pools = {local:{},session:{}};
 const storage = pool => ({get:async key=>({[key]:pool[key]}),set:async values=>Object.assign(pool,values),remove:async key=>delete pool[key]});
 const current = () => ({id:activeId,url,status:'complete',windowId:1,title:'Fixture'});
@@ -24,9 +24,12 @@ const sandbox = {URL,AbortSignal,crypto:webcrypto,console,setTimeout:fn=>{queueM
     tabs:{query:async()=>[current()],get:async()=>current(),
       create:async options=>{url=options.url;return current();},
       update:async id=>{activeId=id;return current();},goBack:async()=>{},goForward:async()=>{},reload:async()=>{}},
-    scripting:{executeScript:async ({func,args})=>{
-      if (func.name === 'observePage') return [{result:snapshot(args[0])}];
-      calls.push(args);return [{result:args[0]==='media'?{paused:true,muted:false}:{}}];
+    scripting:{executeScript:async ({files,args})=>{
+      if (files) return [];
+      if (scriptFailure) return [{result:scriptFailure}];
+      const [command,values] = args;
+      if (command === 'observePage') return [{result:{ok:true,value:snapshot(values[0])}}];
+      calls.push(values);return [{result:{ok:true,value:values[0]==='media'?{paused:true,muted:false}:{}}}];
     }}}
 };
 const context = vm.createContext(sandbox);
@@ -58,6 +61,11 @@ const run = (action,text='',number=0)=>sandbox.perform({action,text,number});
   for (const bad of ['javascript:alert(1)','file:///C:/test','https://user:pass@fixture.test'])
     await assert.rejects(run('open',bad),/http/);
   await assert.rejects(run('evaluate','dangerous()'),/Unsupported/);
+  scriptFailure = {ok:false,error:'No HTML video/audio was found.'};
+  await assert.rejects(run('media','pause'),/No HTML video/);
+  scriptFailure = {};
+  await assert.rejects(run('read'),/page changed or Chrome/);
+  scriptFailure = null;
   let pairingReply;
   listeners.message({type:'pair',token:'1'.repeat(64)},{tab:{url:'https://evil.test/connect#'+'1'.repeat(64)}},v=>pairingReply=v);
   assert.match(pairingReply.error,/Open the connection page/);

@@ -1,4 +1,15 @@
 /* Packaged page functions only; no model-provided code. */
+async function runPageCommand(command, args) {
+  try {
+    let value;
+    if (command === 'observePage') value = observePage(...args);
+    else if (command === 'actOnPage') value = await actOnPage(...args);
+    else throw Error('Unsupported page command.');
+    return {ok:true,value};
+  } catch (error) {
+    return {ok:false,error:String(error.message || error)};
+  }
+}
 async function actOnPage(operation, payload) {
   const visible = e => !!(e && e.getClientRects().length && getComputedStyle(e).visibility !== 'hidden' && !e.disabled);
   if (payload.url && location.href !== payload.url) throw Error('The page changed. Read it again.');
@@ -49,8 +60,14 @@ async function actOnPage(operation, payload) {
   }
   if (operation === 'media') {
     if (!['play','pause','mute','unmute'].includes(payload.value)) throw Error('Unsupported media action.');
-    const e = document.querySelector('video,audio');
+    let e = document.querySelector('video,audio');
+    const deadline = performance.now() + 8000;
+    while (!e && performance.now() < deadline) {
+      await new Promise(resolve => setTimeout(resolve,200));
+      e = document.querySelector('video,audio');
+    }
     if (!e) throw Error('No HTML video/audio was found.');
+    if (payload.url && location.href !== payload.url) throw Error('The page changed. Read it again.');
     if (payload.value === 'play') await e.play();
     else if (payload.value === 'pause') e.pause();
     else e.muted = payload.value === 'mute';

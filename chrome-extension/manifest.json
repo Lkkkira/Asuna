@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "ASUNA Browser Companion",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "minimum_chrome_version": "120",
   "description": "Connect your chosen Chrome profile to your local ASUNA assistant.",
   "permissions": ["tabs", "scripting", "storage", "alarms"],

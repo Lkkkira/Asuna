@@ -74,6 +74,18 @@ class ExtensionPageTests(unittest.TestCase):
         with self.assertRaisesRegex(Exception,'Unsupported'):
             self.act('evaluate',value='alert(1)')
 
+    def test_script_errors_are_returned_without_rejected_injection(self):
+        self.page.locator('video').evaluate('e=>e.remove()')
+        result = self.page.evaluate("runPageCommand('actOnPage',['media',{value:'pause'}])")
+        self.assertFalse(result['ok'])
+        self.assertIn('No HTML video/audio',result['error'])
+
+    def test_media_waits_for_a_player_loaded_after_navigation(self):
+        self.page.locator('video').evaluate('e=>e.remove()')
+        self.page.evaluate("setTimeout(()=>document.body.appendChild(document.createElement('video')),150)")
+        state = self.act('media',value='mute')
+        self.assertTrue(state['muted'])
+
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)

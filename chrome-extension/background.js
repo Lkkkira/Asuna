@@ -18,9 +18,12 @@ async function api(path, body, token) {
 }
 async function pageFunction(tab, func, args) {
   webURL(tab.url);
-  const result = await chrome.scripting.executeScript({target:{tabId:tab.id},func,args});
-  if (!result[0] || result[0].result === undefined) throw Error('Chrome could not read this page.');
-  return result[0].result;
+  // Chrome may not propagate a rejected injected function. Package errors explicitly.
+  await chrome.scripting.executeScript({target:{tabId:tab.id},files:['page.js']});
+  const result = await chrome.scripting.executeScript({target:{tabId:tab.id},func:runPageCommand,args:[func.name,args]});
+  const payload = result[0]?.result;
+  if (!payload || payload.ok !== true) throw Error(payload?.error || 'The page changed or Chrome could not use this control. Read the page again.');
+  return payload.value;
 }
 async function waitTab(tabId) {
   for (let i=0; i<50; i++) {
