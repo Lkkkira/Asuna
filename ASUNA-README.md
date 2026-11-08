@@ -8,7 +8,9 @@ The upstream MIT license and author credit remain in LICENSE. The original comma
 1. Keep Ollama running with `qwen3.5:4b` and `qwen3.5:9b` installed.
 2. Double-click **Start ASUNA.bat** in this folder.
 
-Uses your existing Python 3 installation, tkinter, and the standard library. **Do not install the old requirements.txt for this edition.** No paid API keys are needed. Local chat and dictionary work offline after model download; website searches require internet.
+Text mode uses your existing Python 3 installation, tkinter, and the standard library. **Do not install the old requirements.txt for this edition.** Optional microphone input uses Setup Voice.bat, which creates a local voice environment and downloads a recognition model. Start ASUNA.bat uses that environment automatically if present. No paid API keys are needed. Local chat, dictionary, and configured voice work offline after model download; website searches require internet.
+
+Voice controls: Record → speak → Stop recording → review the transcript → Send. Speak replies enables local Windows speech; Stop speaking interrupts it. Voice settings selects microphone, installed voice, and recognition language. Spoken responses are capped at about 1,800 characters; code blocks and URLs are shortened for speech. Full replies stay in chat. Audio is kept in memory and never automatically submitted as a command. Close the app to stop recording and speech. Detailed setup and limitations are in README.md.
 
 ## Commands to try
 
@@ -68,7 +70,8 @@ Recent 20 conversation messages are supplied to either model, within the model's
 - Added the working ASUNA interface, Fast/Deep Ollama chat, background workers, local tasks, scoped file search and document reading.
 - Added structured natural-language planning, follow-up clarification, and a status/results work view. Model planning receives request context, not attached document text. The answer-writing stage cannot execute actions.
 - Replaced the placeholder screenshot destination with timestamped PNGs using built-in Windows screen capture.
-- The original voice/Google speech, face authentication, weather/news API, SMTP email, forced shutdown, downloader and OCR paths are not wired into the ASUNA launcher. They require separate adaptation; the upstream scripts remain for reference.
+- Replaced the original Google speech input with optional offline recognition, and added local Windows speech with recording/review, voice/device selection and stop controls.
+- The original face authentication, weather/news API, SMTP email, forced shutdown, downloader and OCR paths are not wired into the ASUNA launcher. They require separate adaptation; the upstream scripts remain for reference.
 
 On the original development computer, earlier notes and conversation were copied from the first ASUNA folder at migration time. The older launcher now redirects to this edition. Fresh GitHub clones start with empty personal data. Personal data is excluded from Git using .gitignore; it remains plain text on each computer.
 

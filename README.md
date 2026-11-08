@@ -15,7 +15,7 @@ A personal Windows assistant with a chat interface, local Ollama models, and exp
 
 4. Double-click **Start ASUNA.bat**, or run `python asuna.py`.
 
-The window title is **ASUNA — Repo edition**. This edition uses Python's standard library; the old upstream `requirements.txt` is not needed to run it.
+The window title is **ASUNA — Repo edition**. Text mode uses Python's standard library; the old upstream `requirements.txt` is not needed to run it. Optional voice setup is below.
 
 ## Features
 
@@ -28,6 +28,7 @@ The window title is **ASUNA — Repo edition**. This edition uses Python's stand
 - File-name search inside a folder you choose, and text / Word document attachments.
 - Local notes, tasks, in-app reminders, and screenshot saving.
 - Explicit personal memory, recurring reminders/tasks, and a daily overview.
+- Optional local microphone transcription and spoken replies through an installed Windows voice.
 
 Try `help`, `open youtube`, `define: algorithm`, `search youtube: Python basics`, `choose search folder`, or `add task: finish assignment`.
 
@@ -54,7 +55,19 @@ Routines support daily, weekdays, or a specific weekday, at an explicit 24-hour 
 
 `daily overview` lists open tasks (including undated tasks), one-time reminders due today/overdue, and routine occurrences still due today/overdue. This version does not run recurring app actions, hourly/monthly schedules, or reminders while ASUNA is closed.
 
-See [the usage guide](ASUNA-README.md) for supported commands and limitations. Reminders require the app to stay open; overdue reminders are delivered on restart. Browser searches require internet and open results for you to read. Voice, face recognition, email, OCR, video downloading, and weather/news APIs are not connected to the ASUNA launcher yet.
+See [the usage guide](ASUNA-README.md) for supported commands and limitations. Reminders require the app to stay open; overdue reminders are delivered on restart. Browser searches require internet and open results for you to read. Face recognition, email, OCR, video downloading, and weather/news APIs are not connected to the ASUNA launcher yet.
+
+## Voice interaction
+
+On a fresh clone, close ASUNA and run **Setup Voice.bat** once. It installs optional packages in `.venv-voice/` and downloads the multilingual base recognition model into `data/voice-model/`. Internet is needed for setup; no paid API keys are required. On the original development computer, this setup has already been completed.
+
+Reopen **Start ASUNA.bat**, which automatically uses the voice environment when present. Click **Record**, speak, then click **Stop recording** (recordings stop automatically at 30 seconds). The transcript appears in the input box for you to review/edit. **Press Send to submit it**; recognized speech never executes automatically. Existing draft text is preserved and the transcript is appended.
+
+Enable **Speak replies** to hear answers. It is off by default and saved locally when changed. **Stop speaking** interrupts playback. **Voice settings** lets you choose an installed Windows voice, a microphone, and recognition language (auto, English, or Hindi). The default speech selection prefers an installed female voice; this computer has Microsoft Zira Desktop. Hindi recognition does not add a Hindi speaking voice: playback pronunciation depends on the installed voice you select.
+
+Microphone input is active only after you press Record. Recording is closed before transcription starts. Audio stays in memory; the app does not save recordings or upload audio. The recognizer runs on the CPU to leave the GPU available for Ollama, and loads only the downloaded local model. Dictation transcriptions become ordinary saved chat only after you submit them; unsent transcripts can appear in the current session's work details. No wake word, continuous listening, or voice cloning is included.
+
+Text chat still works if voice setup is absent. If microphone access is blocked, check Windows microphone permissions yourself and select the correct device. If recognition is poor, try a quieter environment or choose English/Hindi instead of auto detection. Speech playback uses [installed Windows speech voices](https://learn.microsoft.com/en-us/dotnet/api/system.speech.synthesis.speechsynthesizer.getinstalledvoices); recognition uses [faster-whisper](https://github.com/SYSTRAN/faster-whisper).
 
 ## Personal data
 
@@ -70,9 +83,10 @@ python tests/verify_repo.py
 python tests/verify_youtube.py
 python tests/verify_natural_actions.py
 python tests/verify_personal.py
+python tests/verify_voice.py
 ```
 
-Checks use temporary data and mock app/browser launching and model responses. They cover organizer persistence, scoped file opening, document reading, background UI results, dictionary lookup, command routing, plan validation, follow-up clarification, partial failures, and the work panel layout. They do not test a live screenshot, a real browser window, or model accuracy. Natural-language routing requires a running Ollama model; exact commands remain available when it is offline.
+Checks use temporary data and mock app/browser launching, microphone capture, speech playback, and model responses. Voice checks need NumPy, available in the voice environment: `.venv-voice\Scripts\python.exe tests/verify_voice.py`. They do not record a real microphone or play sound. They cover organizer persistence, scoped file opening, document reading, background UI results, dictionary lookup, command routing, plan validation, follow-up clarification, partial failures, voice controls, and the work panel layout. They do not test a live screenshot, a real browser window, or model accuracy. Natural-language routing requires a running Ollama model; exact commands remain available when it is offline.
 
 ## Credits
 

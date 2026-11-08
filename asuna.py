@@ -12,6 +12,7 @@ from jarvis import Jarvis
 from planner import exact_plan, make_plan, label, validate_plan
 from tools_local import ToolExecutor
 from personal import PersonalStore
+from voice import VoiceController
 import time
 
 BASE = Path(__file__).resolve().parent
@@ -50,6 +51,20 @@ class Asuna:
         self.actions = Actions(DATA)
         self.personal = PersonalStore(DATA)
         self.repo_commands = Jarvis(DATA)
+        self.voice = VoiceController(self.events, BASE, DATA)
+        self.voice_playback_ready = False
+        self.voice_name = ''
+        self.voice_language = 'auto'
+        self.voice_device = None
+        self.voice_window = None
+        self.speak_replies = tk.BooleanVar(value=False)
+        try:
+            settings = json.loads((DATA / 'voice-settings.json').read_text(encoding='utf-8'))
+            self.voice_name = settings.get('voice', '') if isinstance(settings.get('voice', ''), str) else ''
+            self.voice_language = settings.get('language', 'auto') if settings.get('language', 'auto') in ('auto', 'en', 'hi') else 'auto'
+            self.speak_replies.set(settings.get('speak_replies') is True)
+        except (OSError, ValueError, AttributeError):
+            pass
         self.document = None
         self.pending_request = None
         self.pending_job = None
@@ -68,8 +83,9 @@ class Asuna:
         if not self.history and self.personal.state['context_floor']:
             self.personal.reset_context()
         root.title('ASUNA — Repo edition')
-        root.geometry('1020x760')
-        root.minsize(720, 620)
+        root.geometry('1020x820')
+        root.minsize(720, 680)
+        root.protocol('WM_DELETE_WINDOW', self.close)
         root.configure(bg='#10121c')
         style = ttk.Style()
         style.theme_use('clam')
@@ -94,6 +110,18 @@ class Asuna:
                                ('Commands', lambda: self.submit('help'))]:
             self.toolbar_buttons.append(self.button(tools, label, command))
         tools.bind('<Configure>', self.layout_toolbar)
+        voice_bar = tk.Frame(root, bg='#10121c')
+        voice_bar.pack(fill='x', padx=26, pady=(0, 8))
+        self.record_button = self.button(voice_bar, 'Record', self.toggle_recording)
+        self.record_button.pack(side='left', padx=(0, 6))
+        self.button(voice_bar, 'Stop speaking', self.stop_speaking).pack(side='left', padx=(0, 6))
+        tk.Checkbutton(voice_bar, text='Speak replies', variable=self.speak_replies, command=self.toggle_speech,
+                       bg='#10121c', fg='#e8eaf3', selectcolor='#30374d', activebackground='#10121c',
+                       activeforeground='white').pack(side='left', padx=4)
+        self.button(voice_bar, 'Voice settings', self.show_voice_settings).pack(side='left', padx=6)
+        self.voice_status = tk.StringVar(value='Record, then review and Send' if self.voice.ready() else 'Run Setup Voice.bat to enable microphone input')
+        tk.Label(root, textvariable=self.voice_status, bg='#10121c', fg='#929ab5', anchor='w',
+                 font=('Segoe UI', 9)).pack(fill='x', padx=28, pady=(0, 8))
         self.chat = scrolledtext.ScrolledText(root, wrap='word', bg='#191d2b', fg='#e8eaf3',
             insertbackground='white', relief='flat', padx=20, pady=18, font=('Segoe UI', 11), state='disabled')
         self.chat.pack(fill='both', expand=True, padx=26)
@@ -139,6 +167,7 @@ class Asuna:
         if self.storage_error:
             self.say('System', self.storage_error)
         self.entry.focus_set()
+        self.voice_playback_ready = True
         root.after(70, self.poll)
         root.after(1000, self.check_reminders)
 
@@ -158,6 +187,98 @@ class Asuna:
         self.chat.insert('end', content + '\n\n')
         self.chat.configure(state='disabled')
         self.chat.see('end')
+        if speaker in ('ASUNA', 'Reminder', 'Routine') and self.voice_playback_ready:
+            self.speak_answer(content)
+
+    def speak_answer(self, text):
+        if self.speak_replies.get() and text.strip():
+            self.voice.speak(text, self.voice_name)
+
+    def save_voice_settings(self):
+        try:
+            temporary = DATA / 'voice-settings.tmp'
+            temporary.write_text(json.dumps({'voice': self.voice_name, 'language': self.voice_language,
+                                            'speak_replies': self.speak_replies.get()}), encoding='utf-8')
+            temporary.replace(DATA / 'voice-settings.json')
+        except OSError as exc:
+            self.voice_status.set('Could not save voice settings: ' + str(exc))
+
+    def toggle_speech(self):
+        if not self.speak_replies.get():
+            self.stop_speaking()
+        self.save_voice_settings()
+
+    def stop_speaking(self):
+        self.voice.stop_speaking()
+        if not self.voice.input_busy:
+            self.voice_status.set('Speech stopped')
+
+    def toggle_recording(self):
+        if self.voice.input_busy:
+            self.voice.stop_recording.set()
+            self.record_button.configure(text='Transcribing…', state='disabled')
+            return
+        if self.busy:
+            return
+        try:
+            if self.voice.start_recording(self.voice_device, None if self.voice_language == 'auto' else self.voice_language):
+                self.begin_job('Voice input')
+                self.voice_status.set('Starting microphone… Press again to stop. Maximum 30 seconds.')
+                self.record_button.configure(text='Stop recording')
+                self.send_button.configure(state='disabled')
+        except Exception as exc:
+            self.voice_status.set(str(exc))
+            self.say('System', str(exc))
+
+    def show_voice_settings(self):
+        if self.voice_window and self.voice_window.winfo_exists():
+            self.voice_window.lift()
+            return
+        window = self.voice_window = tk.Toplevel(self.root)
+        window.title('ASUNA — Voice settings')
+        window.geometry('600x350')
+        window.configure(bg='#10121c')
+        tk.Label(window, text='Local voice • no paid API keys', font=('Segoe UI', 14, 'bold'),
+                 bg='#10121c', fg='#f5c2df').pack(anchor='w', padx=20, pady=15)
+        tk.Label(window, text='Voice (installed Windows voices)', bg='#10121c', fg='white').pack(anchor='w', padx=20)
+        self.voice_choice = tk.StringVar(value='Automatic female Windows voice')
+        self.voice_choices = ttk.Combobox(window, textvariable=self.voice_choice, state='readonly', width=65,
+                                          values=['Automatic female Windows voice'])
+        self.voice_choices.pack(anchor='w', padx=20, pady=5)
+        tk.Label(window, text='Microphone', bg='#10121c', fg='white').pack(anchor='w', padx=20)
+        self.mic_choice = tk.StringVar(value='Windows default microphone')
+        self.mic_choices = ttk.Combobox(window, textvariable=self.mic_choice, state='readonly', width=65,
+                                        values=['Windows default microphone'])
+        self.mic_choices.pack(anchor='w', padx=20, pady=5)
+        tk.Label(window, text='Recognition language', bg='#10121c', fg='white').pack(anchor='w', padx=20)
+        language = tk.StringVar(value={'auto': 'Auto detect', 'en': 'English', 'hi': 'Hindi'}[self.voice_language])
+        ttk.Combobox(window, textvariable=language, values=['Auto detect', 'English', 'Hindi'],
+                     state='readonly', width=24).pack(anchor='w', padx=20, pady=5)
+        def apply():
+            self.voice_name = self.voice_map.get(self.voice_choice.get(), '')
+            self.voice_device = self.mic_map.get(self.mic_choice.get())
+            self.voice_language = {'Auto detect': 'auto', 'English': 'en', 'Hindi': 'hi'}[language.get()]
+            self.save_voice_settings()
+            window.destroy()
+        self.voice_map, self.mic_map = {'Automatic female Windows voice': ''}, {'Windows default microphone': None}
+        self.button(window, 'Apply', apply).pack(anchor='e', padx=20, pady=12)
+        threading.Thread(target=self.voice_options_worker, daemon=True).start()
+
+    def voice_options_worker(self):
+        voices, microphones, warnings = [], [], []
+        try:
+            voices = self.voice.installed_voices()
+        except Exception as exc:
+            warnings.append(str(exc))
+        try:
+            microphones = self.voice.input_devices()
+        except Exception as exc:
+            warnings.append('Microphone list unavailable: ' + str(exc))
+        self.events.put(('voice_options', (voices, microphones, warnings)))
+
+    def close(self):
+        self.voice.close()
+        self.root.destroy()
 
     def log(self, text):
         self.activity.configure(state='normal')
@@ -219,7 +340,7 @@ class Asuna:
             self.status.set('Conversation is not saved • Check folder permissions')
 
     def clear(self):
-        if self.busy:
+        if self.busy or self.voice.input_busy:
             return
         self.history = []
         self.persist()
@@ -267,7 +388,7 @@ class Asuna:
     def send(self):
         text = self.entry.get().strip()
         key = normalize(text).lower().rstrip('.!?')
-        if not text or (self.busy and key not in ('show activity', 'show your work', 'show work', 'what are you doing', 'hide activity')):
+        if not text or ((self.busy or self.voice.input_busy) and key not in ('show activity', 'show your work', 'show work', 'what are you doing', 'hide activity')):
             return
         self.entry.delete(0, 'end')
         self.submit(text)
@@ -277,7 +398,7 @@ class Asuna:
         if key in ('show activity', 'show your work', 'show work', 'what are you doing', 'hide activity'):
             self.show_activity(key != 'hide activity')
             return
-        if self.busy:
+        if self.busy or self.voice.input_busy:
             return
         self.begin_job(text)
         self.say('You', text)
@@ -296,6 +417,7 @@ class Asuna:
         self.busy = True
         self.send_button.configure(state='disabled')
         self.selector.configure(state='disabled')
+        self.record_button.configure(state='disabled')
         self.status.set('ASUNA is working • ' + self.mode.get())
         threading.Thread(target=target, args=args, daemon=True).start()
 
@@ -384,7 +506,7 @@ class Asuna:
         threading.Thread(target=self.work, args=(model, messages, text), daemon=True).start()
 
     def attach_document(self):
-        if self.busy:
+        if self.busy or self.voice.input_busy:
             return
         path = filedialog.askopenfilename(title='Read a document locally', filetypes=[
             ('Readable documents', '*.txt *.md *.csv *.docx *.py *.json *.log')])
@@ -400,7 +522,7 @@ class Asuna:
             self.events.put(('action_error', str(exc)))
 
     def check_reminders(self):
-        if not self.busy:
+        if not self.busy and not self.voice.input_busy:
             try:
                 for reminder in self.actions.due():
                     self.say('Reminder', reminder['text'])
@@ -434,6 +556,7 @@ class Asuna:
         self.busy = False
         self.send_button.configure(state='normal')
         self.selector.configure(state='readonly')
+        self.record_button.configure(state='normal')
         self.status.set('Ready • ' + self.mode.get() +
                         (' • Document: ' + self.document[0] if self.document else ''))
 
@@ -476,6 +599,47 @@ class Asuna:
                 kind, value = self.events.get_nowait()
                 if kind == 'log':
                     self.log(value)
+                elif kind == 'voice_recording':
+                    self.voice_status.set('Recording locally… Press Stop recording when finished. Maximum 30 seconds.')
+                    self.update_job('Working', 'Recording microphone audio locally.')
+                elif kind == 'voice_status':
+                    self.voice_status.set(value)
+                    if self.voice.input_busy:
+                        self.update_job('Working', value)
+                elif kind == 'speech_status':
+                    generation, text = value
+                    if generation == self.voice.speech_generation and not self.voice.input_busy:
+                        self.voice_status.set(text)
+                elif kind == 'voice_transcript':
+                    self.record_button.configure(text='Record', state='normal')
+                    self.send_button.configure(state='normal')
+                    draft = self.entry.get().strip()
+                    self.entry.delete(0, 'end')
+                    self.entry.insert(0, (draft + ' ' if draft else '') + value)
+                    self.entry.focus_set()
+                    self.voice_status.set('Transcript ready — review it, then press Send. Nothing has been sent yet.')
+                    self.finish_job('Completed', 'Transcribed locally: ' + value + '\nReview the input box before sending.')
+                elif kind == 'voice_error':
+                    self.voice_status.set(value)
+                    self.log('Voice: ' + value)
+                    if not self.busy:
+                        self.record_button.configure(text='Record', state='normal')
+                        self.send_button.configure(state='normal')
+                        if self.current_job:
+                            self.finish_job('Failed', value)
+                elif kind == 'voice_options':
+                    voices, microphones, warnings = value
+                    if self.voice_window and self.voice_window.winfo_exists():
+                        for v in voices:
+                            self.voice_map[f"{v['name']} ({v['gender']}, {v['culture']})"] = v['name']
+                        for m in microphones:
+                            self.mic_map[f"{m['id']}: {m['name']}"] = m['id']
+                        self.voice_choices.configure(values=list(self.voice_map))
+                        self.mic_choices.configure(values=list(self.mic_map))
+                        self.voice_choice.set(next((k for k, v in self.voice_map.items() if v == self.voice_name), 'Automatic female Windows voice'))
+                        self.mic_choice.set(next((k for k, v in self.mic_map.items() if v == self.voice_device), 'Windows default microphone'))
+                    if warnings:
+                        self.voice_status.set(' • '.join(warnings))
                 elif kind == 'stage':
                     self.update_job('Working', value)
                 elif kind == 'plan':
@@ -567,6 +731,7 @@ class Asuna:
                         self.persist()
                         self.log('Reply completed. Conversation saved locally.')
                         self.finish_job('Completed', answer)
+                        self.speak_answer(answer)
                     else:
                         self.say('System', 'Could not complete the reply. Check that Ollama is running and the selected model is installed.\n' + value)
                         self.status.set('Connection or model error • You can retry')
