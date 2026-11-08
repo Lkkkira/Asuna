@@ -27,6 +27,11 @@ Try these requests:
 | `open the first video` | Open a recognizable video link at that position |
 | `search web for: Python tutorials` then `open the first result` | Follow the first recognizable search result |
 | `read page` | List observed links, buttons and fields with numbered IDs |
+| `open Discord in Chrome` | Open Discord's web app in the selected Chrome profile |
+| `open Discord` | Start a desktop client found in standard install locations; otherwise open the web app |
+| `open a service name in Chrome` | Use a known site address or search the supplied name, preserving the requested destination |
+| `type Discord in the search box` | Find one observed search field and review the exact text before filling it |
+| `type: your draft` | Review typing into the focused webpage field, or a unique search/sole field if none is focused |
 | `summarize this page` | Supply visible text to the local answer model as reference data |
 | `click About` / `click 12` | Use a unique exact label or observed ID |
 | `fill 8: your text` | Review and fill an ordinary text field |
@@ -40,6 +45,10 @@ Try these requests:
 Generic buttons, sensitive links, and field entry require a concrete review in ASUNA. Password, payment-code and upload fields are manual. Targets are checked against the observed page; navigation invalidates old numbered targets. After a page changes, read it again before choosing its IDs. Missing/ambiguous targets fail with details instead of using guessed coordinates.
 
 The Like command recognizes English YouTube video labels that include changing reaction counts. It excludes comment Like buttons and Dislike, checks the toggle state, and reports already-liked videos without clicking them again. It requires a unique identifiable control on a YouTube video/Shorts page. The review identifies the actual video and button. If sign-in is required or YouTube does not confirm the reaction, check Chrome manually before retrying. Reload the extension after updates and restart ASUNA when its Python files change.
+
+Typing commands fill ordinary webpage inputs, textareas and supported editable draft areas after review. They do not press Enter or send a message. `search this site for ...` is a separate reviewed submission. If more than one field matches, click the intended webpage field first and use `type: ...`, or choose a displayed field ID with `fill ID: ...`. Password/payment/upload fields, read-only controls, browser address bars and native dialogs remain manual. Some complex editors may reject programmatic text; ASUNA checks whether the field kept its value and reports failure rather than claiming it worked.
+
+For a simple explicit browser request whose site name is unknown, ASUNA searches that exact name instead of guessing a domain or opening an empty Chrome homepage. It leaves the results for you to inspect. This fallback does not retry failed clicks, submissions or account changes. A complete new command also takes precedence over an older clarification question.
 
 Visible webpage text is untrusted reference data. It cannot become code, change the tool allowlist, or grant permission. Browser summaries use the local model and may be inaccurate. The planner sees a bounded list of observed controls, not the full page body; answer generation can read the page body but cannot execute actions.
 

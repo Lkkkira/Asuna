@@ -436,7 +436,8 @@ class Asuna:
     def action_worker(self, text, model=None, context=None):
         try:
             context = context or {}
-            plan = None if context.get('clarification') else exact_plan(normalize(text))
+            # A complete new command takes precedence over an older clarification.
+            plan = exact_plan(normalize(text))
             if plan is None:
                 self.events.put(('stage', 'Understanding your request with the local model…'))
                 model = model or MODELS['Fast']

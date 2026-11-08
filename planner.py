@@ -14,10 +14,10 @@ TOOLS = ('open_app', 'open_site', 'search_web', 'search_youtube', 'search_maps',
          'browser_forward', 'browser_reload', 'browser_scroll', 'browser_tabs', 'browser_switch_tab', 'browser_media', 'browser_find', 'browser_search')
 FOLDERS = ('chosen', 'downloads', 'documents', 'desktop', 'pick')
 APPS = ('calculator', 'notepad', 'paint', 'explorer', 'task manager', 'settings',
-        'browser', 'chrome', 'google chrome', 'downloads', 'documents', 'desktop')
+        'browser', 'chrome', 'google chrome', 'downloads', 'documents', 'desktop', 'discord')
 SITES = {'youtube': 'https://youtube.com', 'google': 'https://google.com',
          'amazon': 'https://amazon.com', 'stackoverflow': 'https://stackoverflow.com',
-         'github': 'https://github.com'}
+         'github': 'https://github.com', 'discord': 'https://discord.com/app'}
 SCHEMA = {
     'type': 'object', 'additionalProperties': False,
     'properties': {
@@ -44,9 +44,13 @@ capabilities not listed. Ask a short concrete question. Never invent IDs, times,
 URLs, task content or unrequested side effects. Clarification must have NO steps.
 Use only these tools:
 open_app: text one of calculator, notepad, paint, explorer, task manager, settings, browser, chrome,
-downloads, documents, desktop.
-open_site: text a website name youtube/google/amazon/stackoverflow/github or an explicit
+downloads, documents, desktop, discord. Discord opens the desktop client when found, otherwise its web app.
+open_site: text a website name youtube/google/amazon/stackoverflow/github/discord or an explicit
 http(s) URL the user supplied. To search a site, use its search tool instead of opening it first.
+When the user asks to open NAME in Chrome/browser, preserve NAME: use open_site for known sites
+or an explicit supplied URL, otherwise search_web for NAME. Do not merely open the Chrome homepage.
+Do not invent a website address. A search is a fallback for a requested browser target, not for failed clicks,
+form submissions, account changes or other side effects. Do not automatically retry those actions.
 search_web/search_youtube/search_maps/search_wikipedia: text the search terms. These open
 results in ASUNA-controlled Chrome. Further actions use browser tools below.
 browser_read: read the current page and list numbered links/buttons/fields. To summarize a
@@ -60,6 +64,8 @@ number=0. The browser resolves the video's own Like control and checks whether i
 Do not use a comment's Like button. The action always requires review before changing the video reaction.
 browser_fill: text is JSON {"field":"observed exact field label","value":"user-supplied text"},
 number is its observed ID or 0. Requires in-app review. Password/payment/upload fields are manual.
+For a requested search box use field='@search'; for 'type: TEXT' use field='@focused'. The app resolves
+an observed field, asks if ambiguous, and reviews the exact field and text. Typing alone never submits.
 browser_back/browser_forward/browser_reload/browser_tabs: no arguments.
 browser_switch_tab: number the displayed tab index. browser_scroll: text up/down/top/bottom.
 browser_media: text play/pause/mute/unmute. browser_find: text literal text to find on the page.
@@ -190,7 +196,7 @@ def validate_plan(plan):
             normalized = text.strip().lower()
             if normalized in APPS or normalized in SITES:
                 s['text'] = text = normalized
-            if tool == 'open_app' and normalized in SITES:
+            if tool == 'open_app' and normalized in SITES and normalized not in APPS:
                 s['tool'] = tool = 'open_site'
         if tool in ('search_web', 'search_youtube', 'search_maps', 'search_wikipedia', 'find_files',
                     'add_task', 'set_reminder', 'save_note', 'define', 'save_memory', 'update_memory',
@@ -236,9 +242,49 @@ def validate_plan(plan):
     return plan
 
 
+def browser_open_plan(text):
+    """Resolve a single explicit browser destination without guessing a domain."""
+    match = re.fullmatch(r'(?:open|launch|start)\s+(?:the\s+)?(.+?)\s+(?:in|on|using)\s+(?:the\s+)?(?:google\s+)?(?:chrome|crome|browser|web)', text, re.I)
+    if not match:
+        match = re.fullmatch(r'(?:open|launch|start)\s+(?:the\s+)?(.+?)\s+(?:website|online)', text, re.I)
+    if not match:
+        return None
+    target = match[1].strip()
+    if re.search(r'\b(?:and|then)\b', target, re.I):
+        return None  # Let the planner separate a compound request.
+    name = {'discord app': 'discord', 'discord web': 'discord'}.get(target.lower(), target.lower())
+    if name in SITES:
+        return plan_of(step('open_site', name))
+    if re.match(r'^[a-z][a-z0-9+.-]*:', target, re.I):
+        return validate_plan(plan_of(step('open_site', target)))
+    if re.fullmatch(r'(?:[a-z0-9-]+\.)+[a-z]{2,}(?::\d+)?(?:/[^\s]*)?', target, re.I):
+        return validate_plan(plan_of(step('open_site', 'https://' + target)))
+    return validate_plan(plan_of(step('search_web', target)))
+
+
+def literal_text(text):
+    value = text.strip()
+    return value[1:-1] if len(value) >= 2 and value[0] in ('"', "'") and value[-1] == value[0] else value
+
+
 def exact_plan(text):
     """Known command syntax works without model inference or an Ollama connection."""
     key = text.lower().rstrip('.!?')
+    browser_plan = browser_open_plan(text.strip().rstrip('.!?'))
+    if browser_plan:
+        return browser_plan
+    match = re.fullmatch(r'(?:type|enter)\s+(.+?)\s+(?:in|into)\s+(?:the\s+)?(?:browser\s+)?(search(?:\s+(?:box|bar|field))?|(?:focused|current|selected)(?:\s+(?:box|field|input))?)', text, re.I | re.S)
+    if match:
+        field = '@search' if match[2].lower().startswith('search') else '@focused'
+        return validate_plan(plan_of(step('browser_fill', json.dumps({'field': field, 'value': literal_text(match[1])}))))
+    match = re.fullmatch(r'(?:type|enter)\s*:\s*(.*)', text, re.I | re.S)
+    if match:
+        return validate_plan(plan_of(step('browser_fill', json.dumps({'field': '@focused', 'value': literal_text(match[1])}))))
+    for pattern in (r'search (?:the )?(?:web|browser|chrome|crome) for\s*:?\s*(.+)',
+                    r'search for\s+(.+?)\s+(?:in|on|using)\s+(?:the\s+)?(?:chrome|crome|browser)'):
+        match = re.fullmatch(pattern, text, re.I)
+        if match:
+            return validate_plan(plan_of(step('search_web', match[1])))
     browser_fixed = {'read page': 'browser_read', 'read this page': 'browser_read', 'show browser page': 'browser_read',
                      'go back': 'browser_back', 'browser back': 'browser_back', 'go forward': 'browser_forward',
                      'reload page': 'browser_reload', 'refresh page': 'browser_reload', 'show browser tabs': 'browser_tabs'}
@@ -287,8 +333,9 @@ def exact_plan(text):
              'date': 'date', "what is today's date": 'date'}
     if key in fixed:
         return plan_of(step(fixed[key]))
-    if key.startswith('open ') and key[5:] in APPS:
-        return plan_of(step('open_app', key[5:]))
+    match = re.fullmatch(r'(?:open|launch|start) (.+)', key)
+    if match and match[1] in APPS:
+        return plan_of(step('open_app', match[1]))
     if key.startswith('open ') and key[5:] in SITES:
         return plan_of(step('open_site', key[5:]))
     if text.startswith(('open https://', 'open http://')) and ' ' not in text[5:]:

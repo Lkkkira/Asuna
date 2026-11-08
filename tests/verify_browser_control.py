@@ -164,6 +164,11 @@ class BrowserIntegration(unittest.TestCase):
                     body = '<title>Search fixture</title><form action="/search"><label>Search<input type="search" name="q"></label><button>Search</button></form>'
                 if self.path == '/long-page':
                     body = '<title>Long page</title><a href="/">Header</a>' + '<p>Article paragraph</p>' * 100 + '<a href="/footer">Footer link</a>'
+                if self.path == '/typing':
+                    body = '''<title>Typing fixture</title><form onsubmit="event.preventDefault();document.querySelector('#echo').textContent='SUBMITTED'">
+                    <textarea aria-label="Search" oninput="document.querySelector('#echo').textContent=this.value"></textarea><button>Search</button>
+                    <input aria-label="Draft" oninput="document.querySelector('#echo').textContent=this.value"><p id="echo"></p></form>
+                    <script>document.querySelector('input').focus()</script>'''
                 self.send_response(200)
                 self.send_header('Content-Type', 'text/html; charset=utf-8')
                 self.end_headers()
@@ -259,6 +264,19 @@ class BrowserIntegration(unittest.TestCase):
             result = self.session.call('click','Like this video')
             self.assertEqual(result['detail'],'This video is already liked.')
             self.assertNotIn('confirm',result)
+
+    def test_focused_typing_and_search_textarea_choose_fields_without_submitting(self):
+        self.session.call('open',self.url+'/typing')
+        review = self.session.call('fill',json.dumps({'field':'@focused','value':'An unsent draft'}))
+        self.assertIn('Draft',review['confirm'])
+        self.session.call('approve',review['ticket'])
+        self.assertIn('An unsent draft',self.session.call('read')['reference'])
+        review = self.session.call('fill',json.dumps({'field':'@search','value':'Discord'}))
+        self.assertIn('Search',review['confirm'])
+        self.session.call('approve',review['ticket'])
+        reference = self.session.call('read')['reference']
+        self.assertIn('Discord',reference)
+        self.assertNotIn('SUBMITTED',reference)
 
 
 if __name__ == '__main__':

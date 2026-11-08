@@ -43,15 +43,21 @@ async function actOnPage(operation, payload) {
       if (item.role !== 'field' || ['password','file','hidden'].includes(e.type) ||
           /password|credit.?card|cvv|otp|one.time|security.code|cc-/i.test(name + ' ' + (e.autocomplete || '')))
         throw Error('Enter authentication, payment and upload details manually in Chrome.');
+      if (e.readOnly || e.getAttribute('aria-readonly') === 'true') throw Error('That field is read-only. Choose an editable text field.');
       if (tag === 'select') throw Error('Choose dropdown values manually for now.');
+      if (!e.isContentEditable && !['text','search','email','url','tel','number','textarea'].includes(e.type))
+        throw Error('Choose an editable text field. Use a reviewed click for buttons and checkboxes.');
       e.focus();
       if (e.isContentEditable) e.textContent = payload.value;
       else {
         const prototype = tag === 'textarea' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
         Object.getOwnPropertyDescriptor(prototype, 'value').set.call(e, payload.value);
       }
-      e.dispatchEvent(new Event('input', {bubbles:true}));
+      e.dispatchEvent(new InputEvent('input', {bubbles:true,inputType:'insertReplacementText',data:payload.value}));
       e.dispatchEvent(new Event('change', {bubbles:true}));
+      await new Promise(resolve => setTimeout(resolve,50));
+      const entered = e.isContentEditable ? e.textContent : e.value;
+      if (entered !== payload.value) throw Error('This page did not keep the entered text. Check the field in Chrome before trying again.');
       if (operation === 'search') {
         if (e.form) e.form.requestSubmit();
         else for (const type of ['keydown','keyup']) e.dispatchEvent(new KeyboardEvent(type, {key:'Enter',code:'Enter',bubbles:true}));
@@ -94,7 +100,7 @@ function observePage(token) {
  const seen = new Set(), items = [];
  const inView=e=>{const r=e.getBoundingClientRect();return r.bottom>0&&r.top<innerHeight&&r.right>0&&r.left<innerWidth;};
  const videoLike=e=>(e.tagName==='BUTTON'||e.getAttribute('role')==='button')&&/^(?:like|unlike)(?: this| the)? video(?: along with .+ other (?:people|person))?[.!]?$/i.test((e.getAttribute('aria-label')||e.getAttribute('title')||e.innerText||'').trim());
- const nodes=[...document.querySelectorAll('a[href],button,input:not([type=hidden]),textarea,select,[role=button],[contenteditable=true]')];
+ const nodes=[...document.querySelectorAll('a[href],button,input:not([type=hidden]),textarea,select,[role=button],[contenteditable=true],[contenteditable="plaintext-only"]')];
  nodes.sort((a,b)=>Number(videoLike(b))-Number(videoLike(a))||Number(inView(b))-Number(inView(a)));
  for (const e of nodes) {
   if (!visible(e)) continue;
@@ -109,7 +115,7 @@ function observePage(token) {
   const ad=!!e.closest('ytd-ad-slot-renderer,ytd-promoted-video-renderer,[data-text-ad],[data-ad],.ads,.sponsored');
   const video=!ad && (/youtube\.com\/watch\?|youtu\.be\/|vimeo\.com\/\d|dailymotion\.com\/video\/|\.(mp4|webm)(\?|$)/i.test(href));
   const result=!ad && (video || !!e.querySelector('h2,h3') || !!e.closest('.search-result,.result,.b_algo,.tF2Cxc,ytd-video-renderer'));
-  items.push({id:items.length+1,role,name,href,type:e.type||'',marker,video,result,pressed:e.getAttribute('aria-pressed')});
+  items.push({id:items.length+1,role,name,href,type:e.type||'',marker,video,result,pressed:e.getAttribute('aria-pressed'),focused:e===document.activeElement||(e.isContentEditable&&e.contains(document.activeElement))});
   if(items.length>=120) break;
  }
  return {url:location.href,title:document.title,items,text:(document.body?.innerText||'').slice(0,12000)};

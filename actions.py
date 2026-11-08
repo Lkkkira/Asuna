@@ -5,6 +5,7 @@ import re
 import stat
 import subprocess
 from browser import open_chrome
+from desktop_apps import discord_executable
 import zipfile
 import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta
@@ -40,6 +41,9 @@ Use “show your work” to inspect each action and its result, even while busy.
 • Pause / Resume / Mute / Unmute (HTML video/audio on the current page)
 • Like the video — reviewed Like action on the current YouTube video; skips videos already liked
 • Connect browser — pair the local extension in your chosen Chrome profile
+• Open Discord / Open Discord in Chrome (desktop with web fallback, or explicit web app)
+• Open a service name in Chrome (known address, otherwise a web search for that name)
+• Type Discord in the search box / Type: your draft (reviewed webpage typing; no automatic send)
 
 Reminders appear here while ASUNA is open. Overdue reminders appear on restart.
 Personal memory is saved only when you ask. Routines use your PC's local clock.
@@ -110,6 +114,13 @@ class Actions:
             if name in apps:
                 subprocess.Popen(apps[name], shell=False)
                 return 'Requested Windows to open ' + name + '.'
+            if name == 'discord':
+                try:
+                    subprocess.Popen([str(discord_executable())], shell=False)
+                    return 'Requested Windows to open Discord.'
+                except OSError:
+                    open_chrome('https://discord.com/app')
+                    return 'Could not start the Discord desktop app; opened Discord in Chrome instead.'
             if name == 'settings':
                 os.startfile('ms-settings:')
                 return 'Opened Windows Settings.'
@@ -134,7 +145,7 @@ class Actions:
                     ctypes.windll.ole32.CoTaskMemFree(ctypes.cast(pointer, ctypes.c_void_p))
                 os.startfile(path)
                 return 'Opened ' + name + '.'
-            if target.startswith(('https://', 'http://')) and urlparse(target).hostname:
+            if target.lower().startswith(('https://', 'http://')) and urlparse(target).hostname:
                 open_chrome(target)
                 return 'Requested Chrome to open ' + target
         match = re.fullmatch(r'search (?:the )?web for\s*:?\s*(.+)', raw, re.I)

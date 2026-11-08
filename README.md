@@ -27,6 +27,7 @@ The window title is **ASUNA — Reactor · Repo edition**. Text mode uses Python
 - Opening Windows apps, folders, websites, and browser searches.
 - Websites and searches open explicitly in Google Chrome, independently of the Windows default browser. Chrome must be installed; ASUNA reports an error rather than switching browsers when it cannot find Chrome. You can also type `open chrome`.
 - Choose an existing Chrome profile and control its pages through the free local ASUNA Browser Companion extension. See [profile setup](BROWSER.md).
+- Discord desktop/web opening, named-site search fallback for explicit Chrome requests, and reviewed typing into a focused webpage field or search box.
 - An offline dictionary with spelling suggestions, adapted from the original project.
 - File-name search inside a folder you choose, and text / Word document attachments.
 - Local notes, tasks, in-app reminders, and screenshot saving.
@@ -102,6 +103,7 @@ python tests/verify_reactor.py
 python tests/verify_chrome_profile.py
 node tests/verify_extension.js
 python tests/verify_extension_page.py
+python tests/verify_discord_typing.py
 ```
 
 Checks use temporary data and mock app/browser launching, microphone capture, speech playback, and model responses. Voice checks need NumPy, available in the voice environment: `.venv-voice\Scripts\python.exe tests/verify_voice.py`. They do not record a real microphone or play sound. They cover organizer persistence, scoped file opening, document reading, background UI results, dictionary lookup, command routing, plan validation, follow-up clarification, partial failures, voice controls, and the work panel layout. They do not test a live screenshot, a real browser window, or model accuracy. Natural-language routing requires a running Ollama model; exact commands remain available when it is offline.

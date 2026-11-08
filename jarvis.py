@@ -27,7 +27,7 @@ class Jarvis:
         key = query.strip().lower().rstrip('.!?')
         sites = {'youtube': 'https://youtube.com', 'amazon': 'https://amazon.com',
                  'google': 'https://google.com', 'stackoverflow': 'https://stackoverflow.com',
-                 'github': 'https://github.com'}
+                 'github': 'https://github.com', 'discord': 'https://discord.com/app'}
         if key.startswith('open ') and key[5:] in sites:
             open_chrome(sites[key[5:]])
             return 'Requested Chrome to open ' + key[5:] + '.'

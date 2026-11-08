@@ -88,6 +88,20 @@ async function perform(job) {
     if (items.length !== 1) throw Error('That target is missing or ambiguous. Read the page and choose a displayed ID or exact label.');
     return items[0];
   };
+  const fieldTarget = async (id,name) => {
+    if (id) return target(id,''); // Keep displayed IDs bound to their original observation.
+    await observe();
+    const fields = state.snapshot.items.filter(i => i.role === 'field');
+    const searches = fields.filter(i => i.type === 'search' || /\b(?:search|query)\b/i.test(i.name));
+    let choices;
+    if (name === '@search') choices = searches;
+    else if (name === '@focused') {
+      choices = fields.filter(i => i.focused);
+      if (!choices.length) choices = searches.length ? searches : fields.length === 1 ? fields : [];
+    } else choices = fields.filter(i => i.name.toLowerCase() === name.toLowerCase());
+    if (choices.length !== 1) throw Error('I could not choose one text field. Click the intended field in Chrome and use type: your text, or read page and use fill ID: your text.');
+    return choices[0];
+  };
   const review = async (operation,item,value='') => {
     if (['fill','search'].includes(operation) && (item.role !== 'field' || ['password','file','hidden'].includes(item.type) || /password|credit.?card|cvv|otp|one.time|security.code|cc-/i.test(item.name)))
       throw Error('Enter authentication, payment and upload details manually in Chrome.');
@@ -125,7 +139,7 @@ async function perform(job) {
   } else if (action === 'click' || action === 'fill') {
     let payload = action === 'fill' ? JSON.parse(text) : {};
     const likeIntent = action === 'click' && !number && (videoLikeIntent(text) || text.trim().toLowerCase() === 'like' && youtubeVideo(tab.url));
-    const item = await target(number,action === 'click' ? text : payload.field || '',likeIntent);
+    const item = action === 'fill' ? await fieldTarget(number,payload.field || '') : await target(number,text,likeIntent);
     if (likeIntent) {
       if (item.pressed === 'true' || /^unlike\b/i.test(item.name)) return {detail:'This video is already liked.',snapshot:state.snapshot};
       if (item.pressed !== 'false') throw Error('I could not determine whether this video is already liked. Check the Like button in Chrome.');
@@ -138,10 +152,7 @@ async function perform(job) {
     if (item.role !== 'link' || /delete|remove|buy|purchase|pay|send|submit|sign.?in|log.?in|logout|subscribe|unsubscribe|confirm|checkout/i.test(item.name+' '+item.href)) return review('click',item);
     webURL(item.href); await act('click',item);
   } else if (action === 'search') {
-    const s = await observe();
-    const fields = s.items.filter(i => i.role === 'field' && (i.type === 'search' || /\bsearch\b/i.test(i.name)));
-    if (fields.length !== 1) throw Error('No unique search field. Read the page and use its displayed ID.');
-    return review('search',fields[0],text);
+    return review('search',await fieldTarget(0,'@search'),text);
   } else if (action === 'back') await chrome.tabs.goBack(tab.id);
   else if (action === 'forward') await chrome.tabs.goForward(tab.id);
   else if (action === 'reload') await chrome.tabs.reload(tab.id);

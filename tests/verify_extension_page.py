@@ -120,6 +120,27 @@ class ExtensionPageTests(unittest.TestCase):
         snapshot = self.page.evaluate("observePage('abcdef0123456789')")
         self.assertEqual(snapshot['items'][0]['name'],'like this video along with 191,712 other people')
 
+    def test_typing_in_search_textarea_does_not_submit(self):
+        self.page.set_content('''<form onsubmit="event.preventDefault();window.sent=true"><textarea aria-label="Search"></textarea><button>Search</button></form>''')
+        self.page.locator('textarea').focus()
+        self.snapshot = self.page.evaluate("observePage('abcdef0123456789')")
+        field = next(i for i in self.snapshot['items'] if i['role']=='field')
+        self.assertTrue(field['focused'])
+        self.act('fill',field,'Discord & friends!')
+        self.assertEqual(self.page.locator('textarea').input_value(),'Discord & friends!')
+        self.assertIsNone(self.page.evaluate('window.sent'))
+
+    def test_focused_editable_draft_is_literal_and_readonly_is_rejected(self):
+        self.page.set_content('''<div role="textbox" aria-label="Draft" contenteditable="plaintext-only"></div><input aria-label="Read only" readonly>''')
+        self.page.locator('[role=textbox]').focus()
+        self.snapshot = self.page.evaluate("observePage('abcdef0123456789')")
+        self.assertTrue(self.item('Draft')['focused'])
+        self.act('fill',self.item('Draft'),'<b>literal draft</b>')
+        self.assertEqual(self.page.locator('[role=textbox]').inner_text(),'<b>literal draft</b>')
+        self.assertEqual(self.page.locator('[role=textbox] b').count(),0)
+        with self.assertRaisesRegex(Exception,'read-only'):
+            self.act('fill',self.item('Read only'),'not entered')
+
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)

@@ -37,7 +37,7 @@ SNAPSHOT = r'''token => {
  const seen = new Set(), items = [];
  const inView=e=>{const r=e.getBoundingClientRect();return r.bottom>0&&r.top<innerHeight&&r.right>0&&r.left<innerWidth;};
  const videoLike=e=>(e.tagName==='BUTTON'||e.getAttribute('role')==='button')&&/^(?:like|unlike)(?: this| the)? video(?: along with .+ other (?:people|person))?[.!]?$/i.test((e.getAttribute('aria-label')||e.getAttribute('title')||e.innerText||'').trim());
- const nodes=[...document.querySelectorAll('a[href],button,input:not([type=hidden]),textarea,select,[role=button],[contenteditable=true]')];
+ const nodes=[...document.querySelectorAll('a[href],button,input:not([type=hidden]),textarea,select,[role=button],[contenteditable=true],[contenteditable="plaintext-only"]')];
  nodes.sort((a,b)=>Number(videoLike(b))-Number(videoLike(a))||Number(inView(b))-Number(inView(a)));
  for (const e of nodes) {
   if (!visible(e)) continue;
@@ -52,7 +52,7 @@ SNAPSHOT = r'''token => {
   const ad=!!e.closest('ytd-ad-slot-renderer,ytd-promoted-video-renderer,[data-text-ad],[data-ad],.ads,.sponsored');
   const video=!ad && (/youtube\.com\/watch\?|youtu\.be\/|vimeo\.com\/\d|dailymotion\.com\/video\/|\.(mp4|webm)(\?|$)/i.test(href));
   const result=!ad && (video || !!e.querySelector('h2,h3') || !!e.closest('.search-result,.result,.b_algo,.tF2Cxc,ytd-video-renderer'));
-  items.push({id:items.length+1,role,name,href,type:e.type||'',marker,video,result,pressed:e.getAttribute('aria-pressed')});
+  items.push({id:items.length+1,role,name,href,type:e.type||'',marker,video,result,pressed:e.getAttribute('aria-pressed'),focused:e===document.activeElement||(e.isContentEditable&&e.contains(document.activeElement))});
   if(items.length>=120) break;
  }
  return {url:location.href,title:document.title,items,text:(document.body?.innerText||'').slice(0,12000)};
@@ -221,6 +221,27 @@ class BrowserSession:
         if (item['role'] != 'field' or item['type'] in ('password', 'file', 'hidden') or
                 re.search(r'password|credit.?card|cvv|otp|one.time|security.code|cc-', item['name'] + ' ' + (locator.get_attribute('autocomplete') or ''), re.I)):
             raise ValueError('Enter authentication, payment, or file-upload details manually in Chrome.')
+        if locator.get_attribute('readonly') is not None or locator.get_attribute('aria-readonly') == 'true':
+            raise ValueError('That field is read-only. Choose an editable text field.')
+        if item['type'] not in ('text', 'search', 'email', 'url', 'tel', 'number', 'textarea', ''):
+            raise ValueError('Choose an editable text field. Use a reviewed click for buttons and checkboxes.')
+
+    def field_target(self, number, name):
+        if number:
+            return self.target(number, '')
+        fields = [i for i in self.snapshot()['items'] if i['role'] == 'field']
+        searches = [i for i in fields if i['type'] == 'search' or re.search(r'\b(search|query)\b', i['name'], re.I)]
+        if name == '@search':
+            choices = searches
+        elif name == '@focused':
+            choices = [i for i in fields if i.get('focused')]
+            if not choices:
+                choices = searches if searches else fields if len(fields) == 1 else []
+        else:
+            choices = [i for i in fields if i['name'].casefold() == name.casefold()]
+        if len(choices) != 1:
+            raise ValueError('I could not choose one text field. Click the intended field in Chrome and use type: your text, or read page and use fill ID: your text.')
+        return self.target(choices[0]['id'], '')
 
     def request_approval(self, operation, item, value=''):
         ticket = secrets.token_hex(16)
@@ -285,7 +306,7 @@ class BrowserSession:
             if action == 'fill':
                 import json
                 payload = json.loads(text)
-                item, locator = self.target(number, payload.get('field', ''))
+                item, locator = self.field_target(number, payload.get('field', ''))
                 self.check_field(item, locator)
                 if locator.evaluate('e => e.tagName') == 'SELECT':
                     raise ValueError('Choose dropdown values manually for now.')
@@ -304,12 +325,7 @@ class BrowserSession:
             web_url(item['href'])
             locator.click()
         elif action == 'search':
-            value = self.snapshot()
-            fields = [i for i in value['items'] if i['role'] == 'field' and
-                      (i['type'] == 'search' or re.search(r'\bsearch\b', i['name'], re.I))]
-            if len(fields) != 1:
-                raise ValueError('No unique search field was found. Read the page, then choose a field by its ID.')
-            item, locator = self.target(fields[0]['id'], '')
+            item, locator = self.field_target(0, '@search')
             self.check_field(item, locator)
             return self.request_approval('search', item, text)
         elif action == 'back':

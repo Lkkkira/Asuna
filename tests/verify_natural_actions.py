@@ -167,6 +167,24 @@ class NaturalActions(unittest.TestCase):
         self.assertTrue(self.app.busy)
         self.assertEqual(len(self.app.work_tree.get_children()), 1)
 
+    def test_explicit_discord_browser_followup_overrides_old_clarification(self):
+        self.app.pending_request = {'original_request':'open discord','latest_reply':'','question':'Open Chrome instead?'}
+        with patch('asuna.make_plan') as model, patch('jarvis.open_chrome') as chrome:
+            self.app.submit('open discord in crome')
+            self.wait()
+        model.assert_not_called()
+        chrome.assert_called_once_with('https://discord.com/app')
+        self.assertIsNone(self.app.pending_request)
+        self.assertEqual(self.statuses(),['Completed'])
+
+    def test_unknown_browser_destination_opens_a_named_search(self):
+        with patch('asuna.make_plan') as model, patch('actions.open_chrome') as chrome:
+            self.app.submit('open A Newly Named Service in chrome')
+            self.wait()
+        model.assert_not_called()
+        chrome.assert_called_once_with('https://www.google.com/search?q=A+Newly+Named+Service')
+        self.assertEqual(self.statuses(),['Completed'])
+
     def test_unsafe_result_read_is_blocked(self):
         inside = self.data / 'scope'
         inside.mkdir()
