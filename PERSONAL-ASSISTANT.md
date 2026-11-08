@@ -1,4 +1,4 @@
-# ASUNA 1.1.0 — everyday use
+# ASUNA 1.1.1 — everyday use
 
 ASUNA is a free local Windows assistant. Ollama supplies conversation and natural-language planning; exact commands, organizer data and utilities also work when Ollama is unavailable. Website services still need internet. No paid API key is required.
 
@@ -29,7 +29,11 @@ Use `open discord` for the installed app (official web app fallback), or `open d
 
 In **Settings → Shortcuts**, add an installed `.exe`, a website address or a folder. Give it a name such as `My editor`, then say `open My editor`. Shortcuts cannot override built-in names such as Chrome and do not accept scripts or shell arguments. Enable/disable them in the panel.
 
+`open youtube and play music` searches for music, opens the first video and requests playback. `play lo-fi music on YouTube` searches that phrase. This needs connected page control; site consent/autoplay restrictions may still require interaction. `first video` and `second result` are direct follow-ups on the current page. ASUNA rejects plans that drop a named destination and merely open Chrome.
+
 For website control, use `read page`, `open the first result`, `click` with an exact displayed label/ID, or `type: your draft`. `type Discord in the search box` selects the page's search field. Ordinary field entry is reviewed and does not automatically press Enter or send. Use the explicit site-search command when you want a search submitted. Generic buttons and sensitive links also require review. Login, passwords, payment details, CAPTCHAs, browser permission prompts and native dialogs remain manual. See [browser details](BROWSER.md).
+
+When pairing, type `connect browser` and click **Connect ASUNA inside the Chrome tab**, then wait for **Connected**. The tab opening by itself is not a completed connection.
 
 ## Tasks, notes and daily tools
 
@@ -74,6 +78,8 @@ Arithmetic supports parentheses, +, -, *, /, //, %, powers (`^` or `**`), pi/e/t
 Attach text, DOCX or selectable-text PDF with **Document** or `read document`, then ask questions about the excerpt. Files are limited to 5 MB and 10,000 extracted characters. PDFs examine up to 100 pages with a page-stream size limit. Large or complex documents can be incomplete; check source material for exact formatting. Scans without text need OCR and encrypted PDFs need a readable copy. PDF extraction uses [pypdf](https://pypdf.readthedocs.io/en/stable/user/extract-text.html).
 
 Voice remains explicit: **Record → Stop recording → review/edit → Send**. Whisper runs locally; English is the default, with Mixed English + Hindi available. No continuous listening, wake word or automatic voice execution is enabled. Female Windows speech is available through **Speak replies** and can be interrupted with **Stop speaking**. See [voice setup](README.md#voice-interaction).
+
+The main checkbox shows **Speak replies: On/Off**. Type `voice on` or `voice off` to save the same setting in chat. **Voice settings → Test voice** is an explicit test of the selected voice and does not enable automatic replies. If there is still no audio, inspect the displayed speech error and Windows output-device/volume controls yourself. Automated checks mock playback and cannot establish that sound reached your speakers.
 
 ## Backups and recovery
 

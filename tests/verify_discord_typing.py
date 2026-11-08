@@ -79,6 +79,21 @@ class DiscordTypingTests(unittest.TestCase):
             step = exact_plan(command)['steps'][0]
             self.assertEqual((step['tool'],step['text']),('search_web','Discord'))
 
+    def test_explicit_youtube_playback_preserves_query_and_orders_steps(self):
+        for text,query in (('open youtube and play music','music'),('play lo-fi music on YouTube','lo-fi music'),
+                           ('Open YouTube in Chrome and then play some jazz','jazz')):
+            steps = exact_plan(text)['steps']
+            self.assertEqual([(s['tool'],s['text'],s['number']) for s in steps],
+                             [('search_youtube',query,0),('browser_open_item','video',1),('browser_media','play',0)])
+        for text in ("open youtube and play jazz then like the video",'open youtube and play my playlist'):
+            self.assertIsNone(exact_plan(text))
+
+    def test_short_numbered_followups_remain_browser_commands(self):
+        for text,kind,number in (('first video','video',1),('the second result','result',2),('3 link','link',3)):
+            step = exact_plan(text)['steps'][0]
+            self.assertEqual((step['tool'],step['text'],step['number']),('browser_open_item',kind,number))
+        self.assertEqual(len(exact_plan('play the first video')['steps']),2)
+
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)

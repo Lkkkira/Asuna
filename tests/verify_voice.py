@@ -1,5 +1,6 @@
 """Offline voice control/UI checks; never opens a real microphone or speaker."""
 import io
+import gc
 import json
 import queue
 import sys
@@ -182,9 +183,12 @@ class VoiceUI(unittest.TestCase):
 
     def tearDown(self):
         self.app.voice.close()
+        self.root.update_idletasks()
         for callback in self.root.tk.call('after', 'info'):
             self.root.after_cancel(callback)
         self.root.destroy()
+        self.app = self.root = None
+        gc.collect()
         asuna.DATA = self.old_data
         self.temp.cleanup()
 
@@ -238,6 +242,44 @@ class VoiceUI(unittest.TestCase):
         settings = json.loads((asuna.DATA / 'voice-settings.json').read_text())
         self.assertEqual(settings['voice'], 'Microsoft Zira Desktop')
         self.assertTrue(settings['speak_replies'])
+
+    def test_voice_on_and_off_are_saved_and_action_replies_are_spoken(self):
+        with patch.object(self.app.voice,'speak') as speak:
+            self.app.submit('voice on')
+            self.assertTrue(self.app.speak_replies.get())
+            self.assertIn('On',self.app.speech_label.get())
+            self.assertTrue(json.loads((asuna.DATA/'voice-settings.json').read_text())['speak_replies'])
+            speak.assert_called_once()
+            self.app.submit('voice off')
+            self.assertFalse(self.app.speak_replies.get())
+            self.assertIn('Off',self.app.speech_label.get())
+            self.assertEqual(speak.call_count,1)
+
+    def test_explicit_voice_test_works_without_enabling_reply_playback(self):
+        self.assertFalse(self.app.speak_replies.get())
+        with patch.object(self.app.voice,'speak') as speak:
+            self.app.test_voice('Selected female voice')
+        speak.assert_called_once()
+        self.assertEqual(speak.call_args.args[1],'Selected female voice')
+        self.assertFalse(self.app.speak_replies.get())
+        self.app.voice.input_busy = True
+        with patch.object(self.app.voice,'speak') as speak:
+            self.app.test_voice()
+        speak.assert_not_called()
+
+    def test_voice_settings_test_button_is_visible_and_uses_the_selected_voice(self):
+        with patch.object(self.app,'voice_options_worker'):
+            self.app.show_voice_settings()
+        window = self.app.voice_window
+        window.geometry('600x390')
+        self.root.update()
+        bar = next(w for w in window.winfo_children() if isinstance(w,asuna.tk.Frame))
+        test_button = next(w for w in bar.winfo_children() if w.cget('text')=='Test voice')
+        self.assertTrue(test_button.winfo_ismapped())
+        self.assertLessEqual(test_button.winfo_rooty()+test_button.winfo_height(),window.winfo_rooty()+window.winfo_height())
+        with patch.object(self.app,'test_voice') as test:
+            test_button.invoke()
+        test.assert_called_once_with('')
 
     def test_new_profile_defaults_to_english_and_mixed_is_persisted(self):
         self.assertEqual(self.app.voice_language, 'en')

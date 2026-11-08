@@ -55,6 +55,9 @@ Use Activity to view requests and their individual actions, status, and result d
 | `daily overview` | View open tasks and remaining reminders/routines due today |
 | `switch to deep` / `switch to fast` | Change model without clearing the conversation |
 | `show your work` / `hide activity` | Show or hide action status |
+| `open youtube and play music` / `play jazz on YouTube` | Search YouTube, open its first video, request playback |
+| `first video` / `second result` | Use a numbered browser target without repeating “open” |
+| `voice on` / `voice off` | Enable or mute spoken replies and save the choice |
 | `settings` / `organizer` / `chat history` / `check setup` | Open the local assistant panels |
 | `show shortcuts` / `open My editor` | Use a shortcut configured in Settings |
 | `edit task 1: pack the charger` / `reopen task 1` | Edit or reopen a task |

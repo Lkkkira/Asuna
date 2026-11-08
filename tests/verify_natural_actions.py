@@ -185,6 +185,42 @@ class NaturalActions(unittest.TestCase):
         chrome.assert_called_once_with('https://www.google.com/search?q=A+Newly+Named+Service')
         self.assertEqual(self.statuses(),['Completed'])
 
+    def test_youtube_music_runs_search_open_video_and_play_without_model_or_empty_chrome(self):
+        self.app.speak_replies.set(True)
+        with patch('asuna.make_plan') as model,patch('jarvis.open_chrome') as chrome, \
+                patch('browser_control.session.call',side_effect=[{'detail':'Opened first video.'},{'detail':'Playing video.'}]) as browser, \
+                patch.object(self.app.voice,'speak') as speak:
+            self.app.submit('open youtube and play music')
+            self.wait()
+        model.assert_not_called()
+        chrome.assert_called_once_with('https://www.youtube.com/results?search_query=music')
+        self.assertEqual([c.args for c in browser.call_args_list],[('open_item','video',1),('media','play',0)])
+        self.assertEqual(self.statuses(),['Completed'])
+        self.assertIn('Playing video',speak.call_args.args[0])
+
+    def test_first_video_followup_bypasses_a_prior_clarification_and_never_opens_google(self):
+        self.app.pending_request = {'original_request':'Open YouTube','latest_reply':'','question':'Which video?'}
+        with patch('asuna.make_plan') as model,patch('jarvis.open_chrome') as chrome, \
+                patch('browser_control.session.call',return_value={'detail':'Opened first video.'}) as browser:
+            self.app.submit('first video')
+            self.wait()
+        model.assert_not_called()
+        chrome.assert_not_called()
+        browser.assert_called_once_with('open_item','video',1)
+        self.assertEqual(self.statuses(),['Completed'])
+
+    def test_missing_browser_connection_stops_music_and_speaks_the_actual_failure(self):
+        self.app.speak_replies.set(True)
+        with patch('jarvis.open_chrome') as chrome,patch('browser_control.session.call',side_effect=RuntimeError('Page control is not connected. Type connect browser.')) as browser, \
+                patch.object(self.app.voice,'speak') as speak:
+            self.app.submit('open youtube and play music')
+            self.wait()
+        chrome.assert_called_once_with('https://www.youtube.com/results?search_query=music')
+        browser.assert_called_once_with('open_item','video',1)
+        self.assertEqual(self.statuses(),['Failed'])
+        self.assertIn('not connected',self.app.chat.get('1.0','end'))
+        self.assertIn('not connected',speak.call_args.args[0])
+
     def test_unsafe_result_read_is_blocked(self):
         inside = self.data / 'scope'
         inside.mkdir()
@@ -198,6 +234,24 @@ class NaturalActions(unittest.TestCase):
 
 
 class PlanValidation(unittest.TestCase):
+    def test_named_site_cannot_be_replaced_by_open_chrome_and_is_repaired_before_execution(self):
+        bad = plan_of(step('open_app','chrome'))
+        good = plan_of(step('search_youtube','music'),step('browser_open_item','video',1),step('browser_media','play'))
+        payloads = [bad,good]
+        calls = []
+        def request(path,body):
+            calls.append(body)
+            return io.BytesIO(json.dumps({'done':True,'message':{'content':json.dumps(payloads[len(calls)-1])}}).encode())
+        self.assertEqual(make_plan(request,'local','open youtube and play music',{})['steps'],good['steps'])
+        self.assertEqual(len(calls),2)
+        self.assertIn('Preserve the requested destination',calls[-1]['messages'][-1]['content'])
+
+    def test_model_that_repeatedly_drops_site_is_rejected(self):
+        def request(path,body):
+            return io.BytesIO(json.dumps({'done':True,'message':{'content':json.dumps(plan_of(step('open_app','chrome')))}}).encode())
+        with self.assertRaisesRegex(ValueError,'Preserve the requested destination'):
+            make_plan(request,'local','open youtube and help me find a video',{})
+
     def test_site_name_normalization_and_duplicate_tab_removal(self):
         plan = validate_plan(plan_of(step('open_app', 'YouTube'), step('search_youtube', 'physics')))
         self.assertEqual(plan['steps'], [step('search_youtube', 'physics')])

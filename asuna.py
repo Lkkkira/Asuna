@@ -9,7 +9,7 @@ from pathlib import Path
 from tkinter import ttk, scrolledtext, filedialog, messagebox
 from actions import Actions, HELP, normalize, read_document
 from jarvis import Jarvis
-from planner import exact_plan, make_plan, label, validate_plan
+from planner import exact_plan, make_plan, label, validate_plan, preserve_requested_destination
 from tools_local import ToolExecutor
 from personal import PersonalStore
 from voice import VoiceController
@@ -83,6 +83,7 @@ class Asuna:
             self.voice_device = device if type(device) is int and device>=0 else None
         except (OSError, ValueError, AttributeError):
             pass
+        self.speech_label = tk.StringVar(value='Speak replies: '+('On' if self.speak_replies.get() else 'Off'))
         self.document = None
         self.pending_request = None
         self.pending_job = None
@@ -241,9 +242,20 @@ class Asuna:
             self.voice_status.set('Could not save voice settings: ' + str(exc))
 
     def toggle_speech(self):
+        self.speech_label.set('Speak replies: '+('On' if self.speak_replies.get() else 'Off'))
         if not self.speak_replies.get():
             self.stop_speaking()
+            self.voice_status.set('Spoken replies off. Enable Speak replies to hear ASUNA.')
+        else:
+            self.voice_status.set('Spoken replies on. ASUNA will speak her next response.')
         self.save_voice_settings()
+
+    def test_voice(self,voice=None):
+        if self.voice.input_busy:
+            self.voice_status.set('Finish recording or transcription before testing the voice.')
+            return
+        self.voice_status.set('Testing the selected Windows voice…')
+        self.voice.speak('Hi, I am ASUNA. This is my voice. Enable Speak replies to hear my responses.',self.voice_name if voice is None else voice)
 
     def stop_speaking(self):
         self.voice.stop_speaking()
@@ -279,7 +291,8 @@ class Asuna:
             return
         window = self.voice_window = tk.Toplevel(self.root)
         window.title('ASUNA — Voice settings')
-        window.geometry('600x350')
+        window.geometry('600x390')
+        window.minsize(600,390)
         window.configure(bg='#080e17')
         tk.Label(window, text='Local voice • no paid API keys', font=('Segoe UI', 14, 'bold'),
                  bg='#080e17', fg='#68e7ec').pack(anchor='w', padx=20, pady=15)
@@ -306,7 +319,10 @@ class Asuna:
             self.voice_status.set(f'{language.get()} • Whisper {self.voice.model_name} • Ready to record')
             window.destroy()
         self.voice_map, self.mic_map = {'Automatic female Windows voice': ''}, {'Windows default microphone': None}
-        self.button(window, 'Apply', apply).pack(anchor='e', padx=20, pady=12)
+        bar = tk.Frame(window,bg='#080e17')
+        bar.pack(fill='x',padx=20,pady=12)
+        self.button(bar,'Test voice',lambda:self.test_voice(self.voice_map.get(self.voice_choice.get(),''))).pack(side='left')
+        self.button(bar, 'Apply', apply).pack(side='right')
         threading.Thread(target=self.voice_options_worker, daemon=True).start()
 
     def voice_options_worker(self):
@@ -434,6 +450,14 @@ class Asuna:
             result = HELP
         elif key in ('connect browser', 'connect chrome'):
             result = browser_session.connect_profile()
+        elif key in ('voice on','enable voice replies','turn on voice','speak replies'):
+            self.speak_replies.set(True)
+            self.toggle_speech()
+            result = 'Spoken replies are on. I will speak my responses using your selected Windows voice.'
+        elif key in ('voice off','disable voice replies','turn off voice','mute replies'):
+            self.speak_replies.set(False)
+            self.toggle_speech()
+            result = 'Spoken replies are off. You can enable them with voice on.'
         elif key in ('settings','open settings panel','assistant settings'):
             self.show_settings()
             result = 'Opened ASUNA settings.'
@@ -499,6 +523,7 @@ class Asuna:
                 return
         except (OSError, ValueError, RuntimeError) as exc:
             self.say('System', 'Action failed: ' + str(exc))
+            self.speak_answer('I could not complete that action. '+str(exc))
             self.log('Action failed: ' + str(exc))
             self.finish_job('Failed', str(exc))
             return
@@ -564,6 +589,7 @@ class Asuna:
                 plan = make_plan(self.model_request, model, text, context)
             self.check_cancelled()
             plan = validate_plan(plan)
+            preserve_requested_destination(plan,text)
             if plan['kind'] == 'clarify':
                 self.events.put(('clarify', (text, plan['question'], context.get('clarification'))))
                 return
@@ -883,6 +909,7 @@ class Asuna:
                     state, detail = value
                     self.ready()
                     self.say('System', detail)
+                    self.speak_answer(detail)
                     self.finish_job(state, detail)
                 elif kind == 'chat':
                     self.begin_chat(value[0], value[1], value[2] if len(value) > 2 else None)
@@ -897,6 +924,7 @@ class Asuna:
                 elif kind == 'action_error':
                     self.ready()
                     self.say('System', 'Action failed: ' + value)
+                    self.speak_answer('I could not complete that action. '+value)
                     self.log('Action failed: ' + value)
                     self.finish_job('Failed', value)
                 elif kind == 'document':

@@ -47,6 +47,9 @@ Use “show your work” to inspect each action and its result, even while busy.
 • Open Discord / Open Discord in Chrome (desktop with web fallback, or explicit web app)
 • Open a service name in Chrome (known address, otherwise a web search for that name)
 • Type Discord in the search box / Type: your draft (reviewed webpage typing; no automatic send)
+• Open YouTube and play music / Play lo-fi music on YouTube (search, open first video, play)
+• First video / Second result (short follow-ups on the current browser page)
+• Voice on / Voice off (spoken replies); Voice settings → Test voice
 • Settings / Organizer / Chat history / Check setup
 • Show shortcuts / Open a shortcut name (add apps, websites and folders in Settings)
 • Edit task 1: new text / Task 1 due: 2026-12-20 / Task 1 priority: high

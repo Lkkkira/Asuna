@@ -197,7 +197,7 @@ def build_reactor(app):
     app.record_button = app.button(voice, 'Record', app.toggle_recording)
     app.record_button.pack(side='left', padx=(0, 6))
     app.button(voice, 'Stop speaking', app.stop_speaking).pack(side='left', padx=(0, 6))
-    tk.Checkbutton(voice, text='Speak replies', variable=app.speak_replies, command=app.toggle_speech,
+    tk.Checkbutton(voice, textvariable=app.speech_label, variable=app.speak_replies, command=app.toggle_speech,
                    bg=BG, fg=TEXT, selectcolor=PANEL, activebackground=BG, activeforeground=TEXT).pack(side='left', padx=4)
     app.button(voice, 'Voice settings', app.show_voice_settings).pack(side='left', padx=6)
     profile = {'en': 'English', 'hi': 'Hindi', 'mixed': 'English + Hindi', 'auto': 'Auto (all languages)'}[app.voice_language]

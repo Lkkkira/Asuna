@@ -205,7 +205,7 @@ class ProfileBridge:
             raise ValueError('Unsupported browser command.')
         self.start()
         if not self.connected():
-            raise RuntimeError('Your Chrome profile opens normally. The page-control connection is not ready. Load ASUNA Browser Companion if needed, then type connect browser in ASUNA.')
+            raise RuntimeError('The page-control connection is not ready. Type connect browser in ASUNA, then click the Connect ASUNA button INSIDE the Chrome page that opens. Opening the tab alone does not connect it. Load ASUNA Browser Companion first if needed.')
         with self.command_lock:
             ticket = secrets.token_hex(16)
             future = concurrent.futures.Future()
@@ -230,12 +230,14 @@ class ProfileBridge:
     def connect(self, profile):
         from browser_profile import launch
         self.start()
+        if self.connected():
+            return 'Your selected Chrome profile is already connected. Page controls are ready.'
         with self.lock:
             self.pair_code = secrets.token_hex(32)
             self.pair_deadline = time.monotonic() + 180
             code = self.pair_code
         launch(f'http://127.0.0.1:{self.port}/connect#' + code, profile)
-        return 'In your selected Chrome profile, press Connect ASUNA. Load the extension first if this is your first connection.'
+        return 'Opened the connection page in your selected Chrome profile. Click the Connect ASUNA button INSIDE that page and wait for Connected. Opening the tab alone does not connect it. Load the extension first if needed.'
 
     def close(self):
         self.closed = True

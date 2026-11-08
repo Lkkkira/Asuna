@@ -60,6 +60,9 @@ When the user asks to open NAME in Chrome/browser, preserve NAME: use open_site 
 or an explicit supplied URL, otherwise search_web for NAME. Do not merely open the Chrome homepage.
 Do not invent a website address. A search is a fallback for a requested browser target, not for failed clicks,
 form submissions, account changes or other side effects. Do not automatically retry those actions.
+Opening Chrome alone does not fulfill a request to open a named website. Preserve the destination in compound requests too.
+For 'open YouTube and play music', search_youtube text='music', then browser_open_item text='video' number=1,
+then browser_media text='play'. Bare 'first video' means browser_open_item text='video' number=1 on the current page.
 search_web/search_youtube/search_maps/search_wikipedia: text the search terms. These open
 results in ASUNA-controlled Chrome. Further actions use browser tools below.
 browser_read: read the current page and list numbered links/buttons/fields. To summarize a
@@ -283,9 +286,48 @@ def literal_text(text):
     return value[1:-1] if len(value) >= 2 and value[0] in ('"', "'") and value[-1] == value[0] else value
 
 
+def youtube_play_plan(text):
+    """A named YouTube playback request searches, opens the first video, then plays."""
+    match = re.fullmatch(r'(?:open|launch|start)\s+(?:the\s+)?youtube(?:\s+in\s+(?:the\s+)?(?:chrome|crome|browser))?\s+(?:and(?:\s+then)?|then|to)\s+play\s+(.+)',text,re.I)
+    if not match:
+        match = re.fullmatch(r'(?:play|put on)\s+(.+?)\s+(?:on|in|using)\s+(?:the\s+)?youtube',text,re.I)
+    if not match:return None
+    query = re.sub(r'^(?:some|a bit of)\s+','',literal_text(match[1]),flags=re.I)
+    # Constraints and extra actions need planning; never silently drop them.
+    if (not query.strip() or re.search(r"\b(?:then|don['’]t|not|without|except|avoid|my|liked|playlist|playlists|subscriptions|latest|newest)\b",query,re.I) or
+            re.search(r'\band\s+(?:open|play|like|subscribe|click|send|add|save|search|mute|close|download)\b',query,re.I)):
+        return None
+    if re.fullmatch(r'(?:the\s+)?(?:first|second|third|\d+)\s+video',query,re.I):
+        return None  # This is a page position, not search terms.
+    return validate_plan(plan_of(step('search_youtube',query.strip()),step('browser_open_item','video',1),step('browser_media','play')))
+
+
+def preserve_requested_destination(plan,text):
+    """A model must not replace an explicit site destination with an empty browser."""
+    if plan['kind']!='actions' or re.search(r"\b(?:instead|rather than|don['’]t|do not)\b",text,re.I):return plan
+    names = re.findall(r'\b(?:open|launch|start|go to)\s+(?:the\s+)?(youtube|google|amazon|stackoverflow|github|discord)\b',text,re.I)
+    search_sites = {'search_youtube':'youtube','search_web':'google','search_maps':'google','search_wikipedia':'wikipedia'}
+    for name in {n.lower() for n in names}:
+        expected_host = urlparse(SITES[name]).hostname
+        fulfilled = False
+        for action in plan['steps']:
+            tool,target = action['tool'],action['text']
+            if search_sites.get(tool)==name:fulfilled = True
+            if tool=='open_site':
+                host = urlparse(SITES.get(target,target)).hostname or ''
+                if host==expected_host or host.endswith('.'+expected_host):fulfilled = True
+            if name=='discord' and tool=='open_app' and target=='discord' and not re.search(r'\b(?:in|on|using)\s+(?:the\s+)?(?:chrome|crome|browser)\b',text,re.I):
+                fulfilled = True
+        if not fulfilled and any(a['tool'] in ('open_app','open_site','search_web') for a in plan['steps']):
+            raise ValueError('Preserve the requested destination '+name+'. Opening Chrome or another site alone does not fulfill this request. Use its site/search tool or ask a clarification.')
+    return plan
+
+
 def exact_plan(text,shortcuts=()):
     """Known command syntax works without model inference or an Ollama connection."""
     key = text.lower().rstrip('.!?')
+    playback = youtube_play_plan(text)
+    if playback:return playback
     match = re.fullmatch(r'(?:open|launch|start) (.+)',key)
     if match and any(s['name'].casefold()==match[1].casefold() for s in shortcuts):
         return plan_of(step('open_shortcut',match[1]))
@@ -346,12 +388,12 @@ def exact_plan(text,shortcuts=()):
     if key in ('pause', 'pause video', 'resume', 'resume video', 'play video', 'mute', 'unmute'):
         command = 'pause' if key.startswith('pause') else 'play' if key.startswith(('play', 'resume')) else key
         return plan_of(step('browser_media', command))
-    match = re.fullmatch(r'(?:open|play|click)(?: the)? (first|second|third|fourth|fifth|\d+)(?: (?:search))? (video|result|link)', key)
+    match = re.fullmatch(r'(?:(open|play|click)(?: the)? |(?:the )?)(first|second|third|fourth|fifth|\d+)(?: (?:search))? (video|result|link)', key)
     if match:
         order = {'first': 1, 'second': 2, 'third': 3, 'fourth': 4, 'fifth': 5}
-        number = order[match[1]] if match[1] in order else int(match[1])
-        steps = [step('browser_open_item', match[2], number)]
-        if key.startswith('play'):
+        number = order[match[2]] if match[2] in order else int(match[2])
+        steps = [step('browser_open_item', match[3], number)]
+        if match[1]=='play':
             steps.append(step('browser_media', 'play'))
         return validate_plan(plan_of(*steps))
     match = re.fullmatch(r'(?:click|click on)\s+(.+)', text, re.I)
@@ -443,6 +485,7 @@ def make_plan(request, model, text, context):
         ('Stop my daily stretch reminder', {'routines': [{'id': 1, 'text': 'stretch', 'active': True}],
                                           'reminders': []}, plan_of(step('pause_routine', number=1))),
         ('Open the first video', {}, plan_of(step('browser_open_item', 'video', 1))),
+        ('Open YouTube and play music', {}, plan_of(step('search_youtube','music'),step('browser_open_item','video',1),step('browser_media','play'))),
         ('Summarize this page', {}, {**plan_of(step('browser_read')), 'needs_reply': True}),
         ('Type cats into the Search field', {'browser': {'items': [{'id': 3, 'role': 'field', 'name': 'Search'}]}},
          plan_of(step('browser_fill', json.dumps({'field': 'Search', 'value': 'cats'}), 3))),
@@ -465,6 +508,7 @@ def make_plan(request, model, text, context):
         content = envelope.get('message', {}).get('content', '')
         try:
             plan = validate_plan(json.loads(content))
+            preserve_requested_destination(plan,text)
             namespaces = {'complete_task': 'tasks', 'cancel_reminder': 'reminders',
                           'update_memory': 'memories', 'forget_memory': 'memories',
                           'update_routine': 'routines', 'pause_routine': 'routines', 'resume_routine': 'routines',

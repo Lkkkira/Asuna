@@ -140,6 +140,20 @@ class BridgeTests(unittest.TestCase):
         self.pair()
         self.assertTrue(self.post('/status')[1]['connected'])
 
+    def test_connect_reports_existing_pairing_or_explains_the_actual_page_button(self):
+        self.pair()
+        token = self.bridge.token
+        with patch('browser_profile.launch') as launch:
+            self.assertIn('already connected',self.bridge.connect({'profile_directory':'Profile 1'}))
+        launch.assert_not_called()
+        self.assertEqual(self.bridge.token,token)
+        self.bridge.last_seen = 0
+        with patch('browser_profile.launch') as launch:
+            message = self.bridge.connect({'profile_directory':'Profile 1'})
+        self.assertIn('button INSIDE',message)
+        self.assertIn('/connect#',launch.call_args.args[0])
+        self.assertNotIn(token,launch.call_args.args[0])
+
     def test_connection_page_does_not_serve_the_pairing_secret(self):
         connection = http.client.HTTPConnection('127.0.0.1',self.bridge.port)
         connection.request('GET','/connect')

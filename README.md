@@ -15,7 +15,15 @@ A personal Windows assistant with a chat interface, local Ollama models, and exp
 
 4. Double-click **Start ASUNA.bat**, or run `python asuna.py`.
 
-The window title is **ASUNA — Reactor · Repo edition · 1.1.0**. Basic text mode uses Python's standard library; the old upstream `requirements.txt` is not needed to run it. Run **Setup ASUNA.bat** once for optional PDF text reading. Optional voice setup is below.
+The window title is **ASUNA — Reactor · Repo edition · 1.1.1**. Basic text mode uses Python's standard library; the old upstream `requirements.txt` is not needed to run it. Run **Setup ASUNA.bat** once for optional PDF text reading. Optional voice setup is below.
+
+## Browser and speech fix — 1.1.1
+
+`open youtube and play music` now runs three direct actions: search YouTube for music, open the first video, then play it. `play lo-fi music on YouTube` uses that search phrase. Short follow-ups such as `first video` and `second result` also work directly. A model plan that replaces a named destination with an empty Chrome window is rejected before it runs.
+
+For your selected profile, page control still needs the extension connection. Type `connect browser`, then click **Connect ASUNA inside the Chrome page** and wait for **Connected**. Opening that tab alone does not pair it. If already connected, ASUNA reports that without opening another pairing page. Missing connections stop the remaining actions and show the actual failure.
+
+Spoken replies need **Speak replies: On**, or type `voice on` (`voice off` mutes them). This choice is saved locally. **Voice settings → Test voice** lets you check an installed Windows voice explicitly, even with automatic replies off. Action failures are also spoken when replies are enabled; speech-backend errors are displayed without repeatedly trying to speak the error.
 
 ## Everyday assistant update — 1.1.0
 
