@@ -17,6 +17,24 @@ from chrome_bridge import ProfileBridge
 
 
 class ProfileTests(unittest.TestCase):
+    def test_profile_change_closes_previous_bridge_rotates_secret_and_discards_targets(self):
+        with tempfile.TemporaryDirectory() as folder:
+            session = BrowserSession(folder)
+            previous = session.extension_bridge = MagicMock()
+            path = Path(folder)/'chrome-bridge.json'
+            path.write_text(json.dumps({'token':'old-secret'}),encoding='utf-8')
+            session.cache = {'url':'https://old.test','title':'Old page','items':[{'id':1}],'token':'old-target'}
+            session.pending['old-approval'] = {'target':1}
+            with patch.object(session,'enable_profile') as enable:
+                session.reset_profile()
+            previous.close.assert_called_once()
+            self.assertIsNone(session.extension_bridge)
+            self.assertEqual(len(json.loads(path.read_text())['token']),64)
+            self.assertNotEqual(json.loads(path.read_text())['token'],'old-secret')
+            self.assertEqual(session.cache,{'url':'','title':'','items':[],'token':''})
+            self.assertEqual(session.pending,{})
+            enable.assert_called_once()
+
     def test_profile_metadata_and_settings_never_copy_account_data(self):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)

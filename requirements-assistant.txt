@@ -1,0 +1,2 @@
+# Optional local PDF text reading; no cloud service or API key.
+pypdf>=7.0,<8

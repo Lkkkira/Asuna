@@ -1,11 +1,14 @@
 """Explicit local actions. Model replies never execute commands."""
 import json
+import copy
 import os
 import re
 import stat
 import subprocess
 from browser import open_chrome
 from desktop_apps import discord_executable
+from shortcuts import Shortcuts
+from everyday import TaskService
 import zipfile
 import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta
@@ -30,7 +33,7 @@ Use “show your work” to inspect each action and its result, even while busy.
 • Search web for: your question (opens your browser)
 • Choose search folder, then find file: part of its name
 • Open result 1 (documents, pictures, and folders only)
-• Read document — choose a text file or Word .docx; then ask me about it
+• Read document — choose text, Word .docx or a text PDF; then ask me about it
 • Add task: finish assignment / Show tasks / Complete task 1
 • Remind me in 20 minutes to take a break / Show reminders / Cancel reminder 1
 • Save note: your note / Show notes
@@ -44,12 +47,21 @@ Use “show your work” to inspect each action and its result, even while busy.
 • Open Discord / Open Discord in Chrome (desktop with web fallback, or explicit web app)
 • Open a service name in Chrome (known address, otherwise a web search for that name)
 • Type Discord in the search box / Type: your draft (reviewed webpage typing; no automatic send)
+• Settings / Organizer / Chat history / Check setup
+• Show shortcuts / Open a shortcut name (add apps, websites and folders in Settings)
+• Edit task 1: new text / Task 1 due: 2026-12-20 / Task 1 priority: high
+• Reopen task 1 / Archive task 1 / Restore task 1 / Show archived tasks
+• Read note 1 / Update note 1: revised text / Search notes: phrase
+• Archive note 1 / Restore note 1 / Show archived notes
+• Calculate: (12 + 3) * 4 / Convert 5 km to miles / Days until 2026-12-20
+• Focus for 25 minutes (a timer reminder) / Stop (stop the current request)
+• Save or restore backups and change local models in Settings
 
 Reminders appear here while ASUNA is open. Overdue reminders appear on restart.
 Personal memory is saved only when you ask. Routines use your PC's local clock.
 Missed routine occurrences catch up once, rather than replaying every missed day.
 File search stays inside your chosen folder and returns up to 30 matches.
-Document reading includes up to 10,000 characters. No PDF reader yet.'''
+Document reading includes up to 10,000 characters. Scanned PDFs need OCR, which is not included.'''
 
 
 def normalize(text):
@@ -69,11 +81,18 @@ class Actions:
                 raise ValueError('Organizer data has an invalid format. Please preserve it and restore from a backup.')
             self.state.update(saved)
         self.results = []
+        self.shortcuts = Shortcuts(data)
+        self._saved_state = copy.deepcopy(self.state)
 
     def save(self):
         temp = self.path.with_suffix('.tmp')
-        temp.write_text(json.dumps(self.state, ensure_ascii=False, indent=2), encoding='utf-8')
-        temp.replace(self.path)
+        try:
+            temp.write_text(json.dumps(self.state, ensure_ascii=False, indent=2), encoding='utf-8')
+            temp.replace(self.path)
+        except OSError:
+            self.state = copy.deepcopy(self._saved_state)
+            raise
+        self._saved_state = copy.deepcopy(self.state)
 
     def choose_folder(self, folder):
         self.state['search_folder'] = str(Path(folder).resolve())
@@ -91,7 +110,8 @@ class Actions:
         try:
             self.save()
         except OSError:
-            self.state['tasks'].remove(task)
+            if task in self.state['tasks']:
+                self.state['tasks'].remove(task)
             raise
         return task
 
@@ -111,6 +131,8 @@ class Actions:
         if key.startswith(('open ', 'launch ', 'start ')):
             target = raw.split(' ', 1)[1].strip().removeprefix('the ')
             name = target.lower().rstrip('.!?')
+            if self.shortcuts.get(name):
+                return self.shortcuts.open(name)
             if name in apps:
                 subprocess.Popen(apps[name], shell=False)
                 return 'Requested Windows to open ' + name + '.'
@@ -170,18 +192,16 @@ class Actions:
             return 'Requested Windows to open ' + str(path)
         match = re.fullmatch(r'add task\s*:\s*(.+)', raw, re.I)
         if match:
-            tasks = self.state['tasks']
-            tasks.append({'id': max([t['id'] for t in tasks], default=0) + 1, 'text': match[1], 'done': False})
-            self.save()
-            return 'Added task ' + str(tasks[-1]['id']) + ': ' + match[1]
+            return TaskService(self).add(match[1])
         if key in ('show tasks', 'my tasks'):
-            return '\n'.join(f"{t['id']}. {'[done]' if t['done'] else '[ ]'} {t['text']}" for t in self.state['tasks']) or 'No tasks yet. Try: add task: review chapter 2'
+            return TaskService(self).listing()
         match = re.fullmatch(r'complete task (\d+)', key)
         if match:
             for task in self.state['tasks']:
                 if task['id'] == int(match[1]):
-                    task['done'] = True
-                    self.save()
+                    if task.get('archived'):
+                        raise ValueError('Restore the archived task before completing it.')
+                    TaskService(self).edit(task['id'],{'done':True})
                     return 'Completed task ' + match[1] + '.'
             return 'Task number not found.'
         match = re.fullmatch(r'remind me in (\d+) (second|minute|hour|day)s? to (.+)', raw, re.I)
@@ -244,6 +264,7 @@ class Actions:
 
 
 def read_document(filename):
+    truncated = False
     path = Path(filename)
     if path.stat().st_size > 5 * 1024 * 1024:
         raise ValueError('Choose a document smaller than 5 MB.')
@@ -254,10 +275,34 @@ def read_document(filename):
             tree = ET.fromstring(archive.read('word/document.xml'))
             ns = {'w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'}
             text = '\n'.join(''.join(p.itertext()) for p in tree.findall('.//w:p', ns))
+    elif path.suffix.lower() == '.pdf':
+        try:
+            from pypdf import PdfReader
+        except ImportError:
+            raise ValueError('Run Setup ASUNA.bat once to enable local PDF text reading.') from None
+        reader = PdfReader(str(path))
+        if reader.is_encrypted:
+            raise ValueError('This PDF is encrypted. Save an unlocked copy yourself, then attach it.')
+        parts, length = [], 0
+        for index,page in enumerate(reader.pages):
+            if index>=100 or length>10000:
+                break
+            contents = page.get_contents()
+            if contents and len(contents.get_data())>10*1024*1024:
+                raise ValueError('This PDF page expands beyond the reading limit.')
+            part = page.extract_text() or ''
+            parts.append(f'[Page {index+1}]\n'+part)
+            length += len(part)
+        text = '\n\n'.join(parts)
+        if not any((part.split('\n',1)[1].strip() for part in parts)):
+            raise ValueError('This PDF has no selectable text. Scanned pages need OCR; use a text-based copy.')
+        if len(reader.pages)>len(parts):
+            truncated = True
+            text += '\n[Additional pages omitted.]'
     elif path.suffix.lower() in {'.txt', '.md', '.csv', '.py', '.json', '.log'}:
         text = path.read_text(encoding='utf-8-sig', errors='replace')
     else:
-        raise ValueError('Supported: TXT, MD, CSV, PY, JSON, LOG and DOCX. PDF support is not included yet.')
+        raise ValueError('Supported: TXT, MD, CSV, PY, JSON, LOG, DOCX and text-based PDF.')
     if not text.strip():
         raise ValueError('No readable text found in this file.')
-    return path.name, text[:10000], len(text) > 10000
+    return path.name, text[:10000], truncated or len(text) > 10000

@@ -90,6 +90,30 @@ class BrowserSession:
             raise ValueError('Run Choose Chrome Profile.bat first, then reopen ASUNA.')
         return self.profile_bridge().connect(profile)
 
+    def reset_profile(self):
+        """A newly chosen profile must pair; the previous profile loses access."""
+        if self.extension_bridge:
+            self.extension_bridge.close()
+            self.extension_bridge = None
+        token_path = self.data/'chrome-bridge.json'
+        if token_path.exists():
+            import json
+            temporary = token_path.with_suffix('.tmp')
+            temporary.write_text(json.dumps({'token':secrets.token_hex(32)}),encoding='utf-8')
+            temporary.replace(token_path)
+        if self.thread:
+            self.jobs.put(None)
+            self.thread.join(timeout=5)
+            if self.thread.is_alive():
+                raise RuntimeError('The previous browser session is still closing. Reopen ASUNA before connecting another profile.')
+            self.thread = None
+            self.context = self.page = self.engine = None
+            self.jobs = queue.Queue()
+        with self.lock:
+            self.cache = {'url':'','title':'','items':[],'token':''}
+            self.pending.clear()
+        self.enable_profile()
+
     @staticmethod
     def available():
         return importlib.util.find_spec('playwright') is not None

@@ -1,6 +1,8 @@
 """Allowlisted action execution and factual results for ASUNA."""
 from dataclasses import dataclass
 from pathlib import Path
+import json
+from datetime import date
 from planner import SITES
 from actions import read_document
 
@@ -40,6 +42,37 @@ class ToolExecutor:
 
     def execute(self, s):
         tool, text, number = s['tool'], s['text'], s['number']
+        if tool=='open_shortcut':
+            return ToolResult(self.actions.shortcuts.open(text))
+        if tool=='show_shortcuts':
+            return ToolResult('\n'.join(i['name']+' ('+i['kind']+')' for i in self.actions.shortcuts.state['items'] if i['enabled']) or 'No shortcuts yet. Add apps, websites or folders in Settings.')
+        if tool in ('read_note','update_note','archive_note','restore_note','search_notes','show_archived_notes'):
+            notes = self.repo.notes
+            if tool=='read_note':
+                detail = notes.read(number)
+            elif tool=='update_note':
+                detail = notes.save(text,number)
+            elif tool in ('archive_note','restore_note'):
+                detail = notes.archive(number,restore=tool=='restore_note')
+            elif tool=='search_notes':
+                detail = notes.listing(text)
+            else:
+                detail = '\n'.join(f"{n['id']}. {n['text'][:220]}" for n in notes.state['notes'] if n['archived']) or 'No archived notes.'
+            return ToolResult(detail)
+        if tool in ('edit_task','show_archived_tasks'):
+            from everyday import TaskService
+            if tool=='edit_task':
+                return ToolResult(TaskService(self.actions).edit(number,json.loads(text)))
+            return ToolResult('\n'.join(f"{t['id']}. {t['text']}" for t in self.actions.state['tasks'] if t.get('archived')) or 'No archived tasks.')
+        if tool in ('calculate','convert_units','days_until'):
+            from everyday import calculate,convert_units
+            if tool=='calculate':
+                return ToolResult(calculate(text))
+            if tool=='convert_units':
+                return ToolResult(convert_units(text))
+            target = date.fromisoformat(text)
+            days = (target-date.today()).days
+            return ToolResult(f"{target.isoformat()} is {days} day(s) from today." if days>=0 else f"{target.isoformat()} was {-days} day(s) ago.")
         if tool.startswith('browser_'):
             from browser_control import session
             if tool in ('browser_click', 'browser_fill') and number and session.cached()['token'] != self.browser_token:

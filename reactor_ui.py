@@ -153,7 +153,8 @@ class ReactorCore(tk.Canvas):
 
 def build_reactor(app):
     root = app.root
-    root.title('ASUNA — Reactor · Repo edition')
+    from version import __version__
+    root.title('ASUNA — Reactor · Repo edition · '+__version__)
     root.geometry('1100x800')
     root.minsize(720, 680)
     root.configure(bg=BG)
@@ -174,10 +175,12 @@ def build_reactor(app):
     brand.pack(side='left')
     tk.Label(brand, text='A S U N A', bg=BG, fg=TEXT, font=('Segoe UI', 20, 'bold')).pack(anchor='w')
     tk.Label(brand, text='H A L O  /  R E A C T O R', bg=BG, fg=MUTED, font=('Segoe UI', 8)).pack(anchor='w')
-    app.mode = tk.StringVar(value='Fast')
+    app.mode = tk.StringVar(value=app.preferences.values['default_mode'])
     app.selector = ttk.Combobox(top, textvariable=app.mode, values=['Fast', 'Deep'], state='readonly', width=8)
     app.selector.pack(side='right', padx=(12, 0))
     app.selector.bind('<<ComboboxSelected>>', lambda e: app.log('Mode selected: '+app.mode.get()+'. Applies to your next message.'))
+    app.button(top,'Settings',app.show_settings).pack(side='right',padx=(8,0))
+    app.button(top,'Organizer',app.show_organizer).pack(side='right',padx=(8,0))
     tk.Checkbutton(top, text='Motion', variable=app.motion_enabled, command=app.save_ui_settings,
                    bg=BG, fg=MUTED, selectcolor=PANEL, activebackground=BG, activeforeground=TEXT).pack(side='right')
     tk.Frame(root, bg=LINE, height=1).pack(fill='x', padx=22)
@@ -208,6 +211,9 @@ def build_reactor(app):
     app.entry.bind('<Return>', lambda e: app.send())
     app.send_button = app.button(bottom, 'Send  →', app.send)
     app.send_button.pack(side='right', ipady=6)
+    app.stop_button = app.button(bottom,'Stop',app.cancel_request)
+    app.stop_button.configure(state='disabled')
+    app.stop_button.pack(side='right',ipady=6,padx=(0,8))
     main = tk.Frame(root, bg=BG)
     main.pack(fill='both', expand=True, padx=22, pady=(14, 0))
     main.columnconfigure(0, weight=3, minsize=230)

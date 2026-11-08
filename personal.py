@@ -157,7 +157,7 @@ class PersonalStore:
 
     def overview(self, actions, now=None):
         now = now or datetime.now()
-        tasks = [t for t in actions.state['tasks'] if not t['done']]
+        tasks = [t for t in actions.state['tasks'] if not t['done'] and not t.get('archived',False)]
         reminders = [r for r in actions.state['reminders'] if not r['delivered'] and datetime.fromisoformat(r['due']).date() <= now.date()]
         routines = [r for r in self.state['routines'] if r['active'] and datetime.fromisoformat(r['next_due']).date() <= now.date()]
         return ('Today — ' + now.strftime('%A, %d %B') + '\n\nOpen tasks (including undated):\n' +

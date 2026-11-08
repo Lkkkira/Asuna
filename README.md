@@ -15,7 +15,24 @@ A personal Windows assistant with a chat interface, local Ollama models, and exp
 
 4. Double-click **Start ASUNA.bat**, or run `python asuna.py`.
 
-The window title is **ASUNA — Reactor · Repo edition**. Text mode uses Python's standard library; the old upstream `requirements.txt` is not needed to run it. Optional voice setup is below.
+The window title is **ASUNA — Reactor · Repo edition · 1.1.0**. Basic text mode uses Python's standard library; the old upstream `requirements.txt` is not needed to run it. Run **Setup ASUNA.bat** once for optional PDF text reading. Optional voice setup is below.
+
+## Everyday assistant update — 1.1.0
+
+Open **Settings** to choose Fast/Deep models, reply length and style, add your own app/site/folder shortcuts, check the local setup, choose a Chrome profile, or back up and restore saved data. Open **Organizer** to edit tasks, due dates and priorities, manage notes, and pause/resume routines. The Reactor interface remains the main place to chat.
+
+- **Stop** interrupts a reply or stops a plan before its next action. Completed actions remain completed; a running file/browser operation may finish before stopping.
+- **New chat** archives the previous conversation. Search and read those archives in **Chat history**, or export the current chat from Settings.
+- Ordinary notes now support reading, editing, searching, archiving and restoring. Existing `notes.txt` is preserved and imported once.
+- Tasks support completion/reopening, due dates, priorities and archiving/restoring. Dates use `YYYY-MM-DD`.
+- Offline calculations, common unit conversions, explicit-date countdowns and focus timers work without an AI connection.
+- Text PDFs join text and DOCX attachments after **Setup ASUNA.bat**. Image-only scans and encrypted PDFs require manual preparation.
+- Daily local backups, validation before restoring, a safety backup before replacement, and a separate **Restore ASUNA Backup.bat** help recover saved data. Backup files contain personal information and stay out of Git.
+- **Check ASUNA.bat** helps diagnose Ollama, models, Chrome, PDF and voice setup. New launches prevent two copies from writing the same data.
+
+For the original development computer, close the old ASUNA window and reopen **Start ASUNA.bat** to load this update. In your selected Chrome profile, manually reload **ASUNA Browser Companion** in `chrome://extensions` once; it should show **1.1.0**. If its popup is disconnected, type `connect browser` in ASUNA and complete pairing. Your chosen profile remains saved locally.
+
+See [the everyday assistant guide](PERSONAL-ASSISTANT.md) for examples, backups, recovery and limits.
 
 ## Features
 
@@ -29,7 +46,7 @@ The window title is **ASUNA — Reactor · Repo edition**. Text mode uses Python
 - Choose an existing Chrome profile and control its pages through the free local ASUNA Browser Companion extension. See [profile setup](BROWSER.md).
 - Discord desktop/web opening, named-site search fallback for explicit Chrome requests, and reviewed typing into a focused webpage field or search box.
 - An offline dictionary with spelling suggestions, adapted from the original project.
-- File-name search inside a folder you choose, and text / Word document attachments.
+- File-name search inside a folder you choose, and text / Word / selectable-text PDF attachments.
 - Local notes, tasks, in-app reminders, and screenshot saving.
 - Explicit personal memory, recurring reminders/tasks, and a daily overview.
 - Optional local microphone transcription and spoken replies through an installed Windows voice.
@@ -104,9 +121,12 @@ python tests/verify_chrome_profile.py
 node tests/verify_extension.js
 python tests/verify_extension_page.py
 python tests/verify_discord_typing.py
+python tests/verify_everyday.py
+python tests/verify_control_center.py
+python tests/verify_browser_control.py --live
 ```
 
-Checks use temporary data and mock app/browser launching, microphone capture, speech playback, and model responses. Voice checks need NumPy, available in the voice environment: `.venv-voice\Scripts\python.exe tests/verify_voice.py`. They do not record a real microphone or play sound. They cover organizer persistence, scoped file opening, document reading, background UI results, dictionary lookup, command routing, plan validation, follow-up clarification, partial failures, voice controls, and the work panel layout. They do not test a live screenshot, a real browser window, or model accuracy. Natural-language routing requires a running Ollama model; exact commands remain available when it is offline.
+Checks use temporary data and mock app launches, microphone capture, speech playback, and model responses. Voice checks need NumPy and PDF checks need pypdf, available after setup in `.venv-voice`; use that environment's Python for the suites. They do not record a real microphone, play sound, or operate personal browser accounts. Browser fixture suites launch headless Chrome with temporary profiles and local HTML pages. Coverage includes backups/rollback, task/note editing, cancellation, organizer windows and compact layouts as well as the original features. Natural-language routing requires a running Ollama model; exact commands remain available when it is offline. These checks do not establish recognition or model accuracy for every request.
 
 ## Credits
 

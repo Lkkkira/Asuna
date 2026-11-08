@@ -8,6 +8,8 @@ The upstream MIT license and author credit remain in LICENSE. The original comma
 1. Keep Ollama running with `qwen3.5:4b` and `qwen3.5:9b` installed.
 2. Double-click **Start ASUNA.bat** in this folder.
 
+Version 1.1.0 adds **Settings**, **Organizer**, **Chat history**, **Stop**, backup/restore and local PDF text reading. Run **Setup ASUNA.bat** once for PDF support. See [the everyday assistant guide](PERSONAL-ASSISTANT.md) for new controls, commands and recovery. Basic chat does not require that optional package.
+
 Text mode uses your existing Python 3 installation, tkinter, and the standard library. **Do not install the old requirements.txt for this edition.** Optional microphone input uses Setup Voice.bat, which creates a local voice environment and downloads a recognition model. Start ASUNA.bat uses that environment automatically if present. No paid API keys are needed. Local chat, dictionary, and configured voice work offline after model download; website searches require internet.
 
 Voice controls: Record → speak → Stop recording → review the transcript → Send. Speak replies enables local Windows speech; Stop speaking interrupts it. Voice settings selects microphone, installed voice, and recognition profile. English is the default; Mixed English + Hindi restricts language selection to those two per recording. General Auto is opt-in. Setup now downloads Whisper Small; an existing Base download remains a fallback. Spoken responses are capped at about 1,800 characters; code blocks and URLs are shortened for speech. Full replies stay in chat. Audio is kept in memory and never automatically submitted as a command. Close the app to stop recording and speech. Detailed setup and limitations are in README.md.
@@ -35,7 +37,7 @@ Use Activity to view requests and their individual actions, status, and result d
 | `open downloads` / `open documents` | Open a Windows folder |
 | `choose search folder` then `find file: chapter` | Search names inside a folder you choose |
 | `open result 1` | Open a document, picture, or folder from that search |
-| `read document` | Attach a text or Word DOCX document for local questions |
+| `read document` | Attach text, Word DOCX or a selectable-text PDF for local questions |
 | `forget document` | Remove the attached document from future requests |
 | `add task: review chapter 2` | Save a task |
 | `show tasks` / `complete task 1` | View or complete tasks |
@@ -53,6 +55,16 @@ Use Activity to view requests and their individual actions, status, and result d
 | `daily overview` | View open tasks and remaining reminders/routines due today |
 | `switch to deep` / `switch to fast` | Change model without clearing the conversation |
 | `show your work` / `hide activity` | Show or hide action status |
+| `settings` / `organizer` / `chat history` / `check setup` | Open the local assistant panels |
+| `show shortcuts` / `open My editor` | Use a shortcut configured in Settings |
+| `edit task 1: pack the charger` / `reopen task 1` | Edit or reopen a task |
+| `task 1 due: 2026-12-20` / `task 1 priority: high` | Set a task date or priority |
+| `archive task 1` / `restore task 1` / `show archived tasks` | Manage archived tasks |
+| `read note 1` / `update note 1: corrected text` | Read or edit an ordinary note |
+| `search notes: charger` / `archive note 1` / `restore note 1` | Find and manage notes |
+| `calculate: (12 + 3) * 4` / `convert 5 km to miles` | Run offline arithmetic or unit conversion |
+| `days until 2026-12-20` / `focus for 25 minutes` | Count days or set an in-app focus timer |
+| `stop` | Interrupt the current reply or stop before the next action |
 
 Reminders require ASUNA to stay open. They appear in the chat, sound a bell, and raise the window. While a reply/action is in progress, delivery waits until it finishes. Overdue reminders are delivered on restart. No Windows scheduled tasks or external automation service is used.
 
@@ -62,7 +74,7 @@ Routines use your PC's local time, with daily, weekdays, or weekly schedules. Mi
 
 The background worker keeps the window responsive. One request runs at a time. Closing the app stops its worker; minimizing keeps it running. Activity shows actual actions and status, not hidden model reasoning.
 
-Search skips linked subfolders and common build folders; limits are 30 matches, 20,000 entries, or about 15 seconds (slow/network folders may take longer). Document reading supports TXT, MD, CSV, PY, JSON, LOG and DOCX up to 5 MB, and supplies only the first 10,000 characters. PDF reading and screen-image analysis are not included.
+Search skips linked subfolders and common build folders; limits are 30 matches, 20,000 entries, or about 15 seconds (slow/network folders may take longer). Document reading supports TXT, MD, CSV, PY, JSON, LOG, DOCX and selectable-text PDF up to 5 MB, and supplies only the first 10,000 characters. PDF support requires Setup ASUNA.bat; at most 100 pages are examined, oversized page streams are rejected, and image-only scans/encrypted files are reported clearly. OCR and screen-image analysis are not included.
 
 Recent 20 conversation messages are supplied to either model, within the model's context limit. Attachments last for the current session only. New conversation detaches the current document and clears saved chat; notes, tasks, reminders and screenshots remain.
 

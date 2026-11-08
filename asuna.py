@@ -14,8 +14,11 @@ from tools_local import ToolExecutor
 from personal import PersonalStore
 from voice import VoiceController
 from reactor_ui import build_reactor, PRESENCE
+from preferences import Preferences
+from chat_history import archive_chat
 from browser_control import session as browser_session
 import time
+from contextlib import contextmanager
 
 BASE = Path(__file__).resolve().parent
 DATA = BASE / 'data'
@@ -47,13 +50,23 @@ class Asuna:
         self.root = root
         self.events = queue.Queue()
         self.busy = False
+        self.cancel_requested = threading.Event()
+        self.response_lock = threading.Lock()
+        self.active_response = None
+        self.worker_thread = None
         self.loaded = None
         self.history = []
         self.activity_visible = False
         DATA.mkdir(exist_ok=True)
+        self.preferences = Preferences(DATA)
+        self.models = self.preferences.models
         self.actions = Actions(DATA)
         self.personal = PersonalStore(DATA)
         self.repo_commands = Jarvis(DATA)
+        self.notes = self.repo_commands.notes
+        self.settings_window = self.organizer_window = self.history_window = None
+        self.restoring = False
+        root.report_callback_exception = self.report_callback_error
         self.voice = VoiceController(self.events, BASE, DATA)
         self.voice_playback_ready = False
         self.voice_name = ''
@@ -66,6 +79,8 @@ class Asuna:
             self.voice_name = settings.get('voice', '') if isinstance(settings.get('voice', ''), str) else ''
             self.voice_language = settings.get('language', 'en') if settings.get('language', 'en') in ('auto', 'en', 'hi', 'mixed') else 'en'
             self.speak_replies.set(settings.get('speak_replies') is True)
+            device = settings.get('microphone')
+            self.voice_device = device if type(device) is int and device>=0 else None
         except (OSError, ValueError, AttributeError):
             pass
         self.document = None
@@ -105,6 +120,14 @@ class Asuna:
         self.voice_playback_ready = True
         root.after(70, self.poll)
         root.after(1000, self.check_reminders)
+        if self.preferences.values['auto_backup']:
+            try:
+                from backups import daily_backup
+                path = daily_backup(DATA)
+                if path:
+                    self.log('Created today’s local data backup.')
+            except (OSError,ValueError,KeyError) as exc:
+                self.log('Automatic backup needs attention: '+str(exc))
         # Temporary-data tests never start the user's local Chrome bridge.
         if DATA.resolve() == browser_session.data.resolve():
             try:
@@ -117,6 +140,61 @@ class Asuna:
         return tk.Button(parent, text=text, command=command, bg='#142b3a', fg='#edf5ff',
                          activebackground='#234b5b', activeforeground='white', relief='flat',
                          padx=13, pady=7, cursor='hand2', font=('Segoe UI', 10))
+
+    def show_settings(self,section='general'):
+        from control_center import show_settings
+        show_settings(self,section)
+
+    def show_organizer(self):
+        from control_center import show_organizer
+        show_organizer(self)
+
+    def show_history(self):
+        from control_center import show_history
+        show_history(self)
+
+    def report_callback_error(self,kind,error,traceback):
+        import logging
+        logging.getLogger('asuna').error('Interface callback failed',exc_info=(kind,error,traceback))
+        messagebox.showerror('ASUNA','Something went wrong: '+str(error)+'\n\nDetails are in data/asuna.log. You can use Check ASUNA.bat for setup help.',parent=self.root)
+
+    def check_cancelled(self):
+        if self.cancel_requested.is_set():
+            raise InterruptedError('Stopped at your request. Completed actions have been kept; remaining actions were not run.')
+
+    @contextmanager
+    def model_request(self,path,body):
+        self.check_cancelled()
+        with request(path,body) as response:
+            with self.response_lock:
+                self.active_response = response
+            try:
+                self.check_cancelled()
+                yield response
+            finally:
+                with self.response_lock:
+                    if self.active_response is response:self.active_response = None
+
+    def abort_model_response(self):
+        with self.response_lock:response = self.active_response
+        if response is None:return
+        def abort():
+            try:
+                import socket
+                stream = getattr(getattr(response,'fp',None),'raw',None)
+                connection = getattr(stream,'_sock',None)
+                if connection is not None:connection.shutdown(socket.SHUT_RDWR)
+            except (OSError,AttributeError):pass
+            try:response.close()
+            except (OSError,ValueError):pass
+        threading.Thread(target=abort,daemon=True).start()
+
+    def cancel_request(self):
+        if not self.busy:return
+        self.cancel_requested.set()
+        self.stop_button.configure(text='Stopping…',state='disabled')
+        self.update_job('Working','Stopping after the current operation. Completed actions are preserved.')
+        self.abort_model_response()
 
     def save_ui_settings(self):
         self.reactor.paint()
@@ -157,7 +235,7 @@ class Asuna:
         try:
             temporary = DATA / 'voice-settings.tmp'
             temporary.write_text(json.dumps({'voice': self.voice_name, 'language': self.voice_language,
-                                            'speak_replies': self.speak_replies.get()}), encoding='utf-8')
+                                            'speak_replies': self.speak_replies.get(),'microphone':self.voice_device}), encoding='utf-8')
             temporary.replace(DATA / 'voice-settings.json')
         except OSError as exc:
             self.voice_status.set('Could not save voice settings: ' + str(exc))
@@ -244,8 +322,12 @@ class Asuna:
         self.events.put(('voice_options', (voices, microphones, warnings)))
 
     def close(self):
+        self.cancel_requested.set()
+        self.abort_model_response()
         self.voice.close()
         browser_session.close()
+        if self.worker_thread and self.worker_thread is not threading.current_thread():
+            self.worker_thread.join(timeout=2)
         self.root.destroy()
 
     def log(self, text):
@@ -255,6 +337,7 @@ class Asuna:
         self.activity.see('end')
 
     def begin_job(self, text):
+        self.cancel_requested.clear()
         self.voice.stop_speaking()
         self.speech_active = False
         self.reactor_task.set(text[:120] + ('…' if len(text) > 120 else ''))
@@ -324,6 +407,11 @@ class Asuna:
     def clear(self):
         if self.busy or self.voice.input_busy:
             return
+        try:
+            archive_chat(DATA,self.history)
+        except OSError as exc:
+            self.say('System','Could not archive the current chat. It is still open. '+str(exc))
+            return
         self.stop_speaking()
         self.job_phase = 'idle'
         self.voice_phase = None
@@ -337,7 +425,7 @@ class Asuna:
         self.chat.configure(state='normal')
         self.chat.delete('1.0', 'end')
         self.chat.configure(state='disabled')
-        self.say('ASUNA', 'Fresh conversation. Document detached. Your notes, tasks and reminders are still available.')
+        self.say('ASUNA', 'Fresh conversation. Earlier messages are in History. Document detached. Your notes, tasks and reminders are still available.')
 
     def local_command(self, text):
         text = normalize(text)
@@ -346,6 +434,18 @@ class Asuna:
             result = HELP
         elif key in ('connect browser', 'connect chrome'):
             result = browser_session.connect_profile()
+        elif key in ('settings','open settings panel','assistant settings'):
+            self.show_settings()
+            result = 'Opened ASUNA settings.'
+        elif key in ('organizer','open organizer','my organizer'):
+            self.show_organizer()
+            result = 'Opened your organizer.'
+        elif key in ('chat history','show chat history'):
+            self.show_history()
+            result = 'Opened archived conversations.'
+        elif key in ('check setup','check asuna','diagnostics'):
+            self.show_settings('health')
+            result = 'Opened setup checks.'
         elif key in ('switch to fast', 'switch to deep'):
             self.mode.set('Fast' if key.endswith('fast') else 'Deep')
             result = 'Switched to ' + self.mode.get() + '. This applies to your next message.'
@@ -365,7 +465,7 @@ class Asuna:
             result = 'Activity panel ' + ('opened.' if self.activity_visible else 'hidden.')
         else:
             context = self.routing_context()
-            self.start_background(self.action_worker, text, MODELS[self.mode.get()], context)
+            self.start_background(self.action_worker, text, self.models[self.mode.get()], context)
             return True
         self.log(result if key != 'show notes' else 'Read saved notes.')
         self.say('ASUNA', result)
@@ -377,13 +477,16 @@ class Asuna:
     def send(self):
         text = self.entry.get().strip()
         key = normalize(text).lower().rstrip('.!?')
-        if not text or ((self.busy or self.voice.input_busy) and key not in ('show activity', 'show your work', 'show work', 'what are you doing', 'hide activity')):
+        if not text or ((self.busy or self.voice.input_busy) and key not in ('show activity', 'show your work', 'show work', 'what are you doing', 'hide activity','stop','stop work','cancel request')):
             return
         self.entry.delete(0, 'end')
         self.submit(text)
 
     def submit(self, text):
         key = normalize(text).lower().rstrip('.!?')
+        if key in ('stop','stop work','cancel request'):
+            self.cancel_request()
+            return
         if key in ('show activity', 'show your work', 'show work', 'what are you doing', 'hide activity'):
             self.show_activity(key != 'hide activity')
             return
@@ -394,7 +497,7 @@ class Asuna:
         try:
             if self.local_command(text):
                 return
-        except (OSError, ValueError) as exc:
+        except (OSError, ValueError, RuntimeError) as exc:
             self.say('System', 'Action failed: ' + str(exc))
             self.log('Action failed: ' + str(exc))
             self.finish_job('Failed', str(exc))
@@ -407,8 +510,10 @@ class Asuna:
         self.send_button.configure(state='disabled')
         self.selector.configure(state='disabled')
         self.record_button.configure(state='disabled')
+        self.stop_button.configure(text='Stop',state='normal')
         self.status.set('ASUNA is working • ' + self.mode.get())
-        threading.Thread(target=target, args=args, daemon=True).start()
+        self.worker_thread = threading.Thread(target=target,args=args,daemon=True)
+        self.worker_thread.start()
 
     def routing_context(self):
         return {'document_attached': self.document[0] if self.document else None,
@@ -420,29 +525,44 @@ class Asuna:
                 'archived_memory_ids': [m['id'] for m in self.personal.memories(True)],
                 'routines': self.personal.state['routines'][-30:], 'history_count': len(self.history),
                 'browser': browser_session.cached(),
+                'notes':[{'id':n['id'],'title':n['text'][:100],'archived':n['archived']} for n in self.notes.state['notes'][-50:]],
+                'shortcuts':[{'name':s['name'],'kind':s['kind']} for s in self.actions.shortcuts.state['items'] if s['enabled']],
                 'clarification': self.pending_request}
 
     def choose_from_worker(self, kind):
+        self.check_cancelled()
         answer = queue.Queue(maxsize=1)
         self.events.put(('choose', (kind, answer)))
         # A daemon worker exits with the app; the picker runs only on the UI thread.
-        return answer.get()
+        return self.wait_for_answer(answer)
 
     def confirm_browser_action(self, summary):
+        self.check_cancelled()
         answer = queue.Queue(maxsize=1)
         self.events.put(('browser_confirm', (summary, answer)))
-        return answer.get()
+        return self.wait_for_answer(answer)
+
+    def wait_for_answer(self,answer):
+        while True:
+            self.check_cancelled()
+            try:
+                value = answer.get(timeout=.1)
+                self.check_cancelled()
+                return value
+            except queue.Empty:pass
 
     def action_worker(self, text, model=None, context=None):
         try:
             context = context or {}
+            self.check_cancelled()
             # A complete new command takes precedence over an older clarification.
-            plan = exact_plan(normalize(text))
+            plan = exact_plan(normalize(text),context.get('shortcuts',()))
             if plan is None:
                 self.events.put(('stage', 'Understanding your request with the local model…'))
-                model = model or MODELS['Fast']
+                model = model or self.models['Fast']
                 self.prepare_model(model)
-                plan = make_plan(request, model, text, context)
+                plan = make_plan(self.model_request, model, text, context)
+            self.check_cancelled()
             plan = validate_plan(plan)
             if plan['kind'] == 'clarify':
                 self.events.put(('clarify', (text, plan['question'], context.get('clarification'))))
@@ -457,6 +577,7 @@ class Asuna:
             results = []
             references = []
             for index, action in enumerate(plan['steps']):
+                self.check_cancelled()
                 self.events.put(('step', (index, 'Working', 'Running ' + label(action))))
                 try:
                     result = executor.execute(action)
@@ -474,18 +595,25 @@ class Asuna:
                 if result.document:
                     self.events.put(('attached', result.document))
                 self.events.put(('step', (index, 'Completed', result.detail)))
+            self.check_cancelled()
             if plan['needs_reply']:
                 self.events.put(('action_summary', '\n\n'.join(results)))
                 self.events.put(('chat', (text, results, references)))
             else:
                 self.events.put(('action', (text, '\n\n'.join(results))))
         except Exception as exc:
-            self.events.put(('action_error', str(exc)))
+            if self.cancel_requested.is_set():
+                details = '\n\n'.join(locals().get('results',[]))
+                message = 'Stopped at your request.'+('\n\nCompleted actions:\n'+details if details else ' No further actions were run.')
+                self.events.put(('request_cancelled',{'message':message,'user':text,'partial':'','completed':details}))
+            else:self.events.put(('action_error', str(exc)))
 
     def begin_chat(self, text, results=None, references=None):
-        model = MODELS[self.mode.get()]
+        model = self.models[self.mode.get()]
         cutoff = min(self.personal.state['context_floor'], len(self.history))
         messages = [{'role': 'system', 'content': SYSTEM}] + self.history[max(cutoff, len(self.history) - 20):]
+        style = self.preferences.values['reply_style']
+        messages[0]['content'] += '\nResponse style requested by the user: '+style+'.'
         memories = [{'id': m['id'], 'text': m['text'][:300]} for m in self.personal.memories()[-20:]]
         if memories:
             messages += [{'role': 'system', 'content': 'Saved personal facts/preferences explicitly provided by the user '
@@ -504,13 +632,14 @@ class Asuna:
         self.status.set('ASUNA is writing a reply • ' + self.mode.get())
         self.update_job('Working', 'Writing a reply using the local model.')
         self.log('Sending to ' + model + ' on this computer. Recent 20 messages included.')
-        threading.Thread(target=self.work, args=(model, messages, text), daemon=True).start()
+        self.worker_thread = threading.Thread(target=self.work,args=(model,messages,text),daemon=True)
+        self.worker_thread.start()
 
     def attach_document(self):
         if self.busy or self.voice.input_busy:
             return
         path = filedialog.askopenfilename(title='Read a document locally', filetypes=[
-            ('Readable documents', '*.txt *.md *.csv *.docx *.py *.json *.log')])
+            ('Readable documents', '*.txt *.md *.csv *.docx *.py *.json *.log *.pdf')])
         if path:
             self.start_background(self.document_worker, path)
         elif self.current_job:
@@ -518,11 +647,16 @@ class Asuna:
 
     def document_worker(self, path):
         try:
-            self.events.put(('document', read_document(path)))
+            result = read_document(path)
+            self.check_cancelled()
+            self.events.put(('document',result))
         except Exception as exc:
-            self.events.put(('action_error', str(exc)))
+            self.events.put(('request_cancelled' if self.cancel_requested.is_set() else 'action_error',str(exc)))
 
     def check_reminders(self):
+        if self.restoring:
+            self.root.after(1000,self.check_reminders)
+            return
         if not self.busy and not self.voice.input_busy:
             try:
                 for reminder in self.actions.due():
@@ -558,13 +692,15 @@ class Asuna:
         self.send_button.configure(state='normal')
         self.selector.configure(state='readonly')
         self.record_button.configure(state='normal')
+        self.stop_button.configure(text='Stop',state='disabled')
         self.status.set('Ready • ' + self.mode.get() +
                         (' • Document: ' + self.document[0] if self.document else ''))
 
     def prepare_model(self, model):
+        self.check_cancelled()
         if self.loaded and self.loaded != model:
             self.events.put(('log', 'Unloading previous model before switching.'))
-            with request('generate', {'model': self.loaded, 'keep_alive': 0, 'stream': False}) as response:
+            with self.model_request('generate', {'model': self.loaded, 'keep_alive': 0, 'stream': False}) as response:
                 response.read()
             self.loaded = None
         self.loaded = model
@@ -574,11 +710,12 @@ class Asuna:
             self.prepare_model(model)
             answer = ''
             finished = False
-            with request('chat', {'model': model, 'messages': messages, 'stream': True,
+            with self.model_request('chat', {'model': model, 'messages': messages, 'stream': True,
                          'think': False, 'keep_alive': '5m',
-                         'options': {'num_ctx': 8192, 'num_predict': 2048}}) as response:
+                         'options': {'num_ctx': self.preferences.values['context_tokens'], 'num_predict': self.preferences.values['reply_tokens']}}) as response:
                 self.events.put(('begin', None))
                 for line in response:
+                    self.check_cancelled()
                     item = json.loads(line)
                     if item.get('error'):
                         raise RuntimeError(item['error'])
@@ -590,16 +727,42 @@ class Asuna:
                         finished = True
             if not finished or not answer.strip():
                 raise RuntimeError('No complete reply was received. Please try again.')
+            self.check_cancelled()
             self.events.put(('done', (text, answer)))
         except Exception as exc:
-            self.events.put(('error', str(exc)))
+            self.events.put(('request_cancelled',{'message':'Stopped generating the reply.','user':text,'partial':locals().get('answer','')}) if self.cancel_requested.is_set() else ('error',str(exc)))
 
     def poll(self):
+        if self.restoring:
+            self.root.after(70,self.poll)
+            return
         try:
             while True:
                 kind, value = self.events.get_nowait()
                 if kind == 'log':
                     self.log(value)
+                elif kind=='setup_health':
+                    from control_center import update_health
+                    update_health(self,value)
+                elif kind=='request_cancelled':
+                    self.ready()
+                    if isinstance(value,dict):
+                        user,partial = value['user'],value['partial']
+                        detail = value['message']
+                        if partial.strip():
+                            self.history.extend([{'role':'user','content':user},{'role':'assistant','content':partial+'\n\n[Stopped before completion]'}])
+                            self.persist()
+                        elif value.get('completed'):
+                            self.history.extend([{'role':'user','content':user},{'role':'assistant','content':detail}])
+                            self.persist()
+                    else:detail = value
+                    self.say('System',detail)
+                    self.log('Request stopped. Completed actions were preserved.')
+                    if self.current_job:
+                        for child in self.work_tree.get_children(self.current_job):
+                            if self.work_tree.set(child,'status') in ('Queued','Working'):
+                                self.update_job('Cancelled','Stopped at your request.',child)
+                    self.finish_job('Cancelled',detail)
                 elif kind == 'voice_recording':
                     self.voice_phase = 'listening'
                     self.reactor.set_level(0)
@@ -673,19 +836,25 @@ class Asuna:
                         self.update_job('Working', detail)
                 elif kind == 'choose':
                     picker, answer = value
+                    if self.cancel_requested.is_set():
+                        answer.put('')
+                        continue
                     self.update_job('Waiting for you', 'Choose a ' + picker + ' in the Windows picker.')
                     try:
                         if picker == 'folder':
                             path = filedialog.askdirectory(parent=self.root, title='Choose the folder ASUNA can search')
                         else:
                             path = filedialog.askopenfilename(parent=self.root, title='Read a document locally', filetypes=[
-                                ('Readable documents', '*.txt *.md *.csv *.docx *.py *.json *.log')])
+                                ('Readable documents', '*.txt *.md *.csv *.docx *.py *.json *.log *.pdf')])
                     except Exception as exc:
                         self.log('Picker could not open: ' + str(exc))
                         path = ''
                     answer.put(path)
                 elif kind == 'browser_confirm':
                     summary, answer = value
+                    if self.cancel_requested.is_set():
+                        answer.put(False)
+                        continue
                     self.update_job('Waiting for you', summary)
                     allowed = messagebox.askyesno('ASUNA — Review browser action', summary + '\n\nAllow this action?', parent=self.root)
                     self.update_job('Working', 'Performing approved browser action.' if allowed else 'Cancelling browser action.')
@@ -765,7 +934,35 @@ class Asuna:
         self.root.after(70, self.poll)
 
 
-if __name__ == '__main__':
-    root = tk.Tk()
-    Asuna(root)
-    root.mainloop()
+def main():
+    import logging
+    from logging.handlers import RotatingFileHandler
+    from single_instance import SingleInstance
+    DATA.mkdir(parents=True,exist_ok=True)
+    logger = logging.getLogger('asuna')
+    logger.setLevel(logging.ERROR)
+    handler = RotatingFileHandler(DATA/'asuna.log',maxBytes=256000,backupCount=2,encoding='utf-8')
+    handler.setFormatter(logging.Formatter('%(asctime)s %(levelname)s %(message)s'))
+    logger.addHandler(handler)
+    root = None
+    try:
+        with SingleInstance(DATA):
+            root = tk.Tk()
+            root.withdraw()
+            app = Asuna(root)
+            root.deiconify()
+            root.mainloop()
+    except Exception as exc:
+        logger.error('ASUNA startup failed',exc_info=True)
+        if root is None:
+            root = tk.Tk()
+            root.withdraw()
+        messagebox.showerror('ASUNA',str(exc)+'\n\nExisting data has not been reset. Check ASUNA.bat can help with setup; Restore ASUNA Backup.bat can recover a saved backup.',parent=root)
+        try:root.destroy()
+        except tk.TclError:pass
+    finally:
+        handler.close()
+        logger.removeHandler(handler)
+
+
+if __name__ == '__main__':main()

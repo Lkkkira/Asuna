@@ -7,6 +7,7 @@ import json
 import re
 import subprocess
 from browser import open_chrome
+from notes import Notes
 from datetime import datetime
 from difflib import get_close_matches
 from pathlib import Path
@@ -22,6 +23,7 @@ class Jarvis:
         self.data_dir = Path(data_dir) if data_dir else ROOT / 'data'
         self.dictionary = None
         self.word_index = None
+        self.notes = Notes(self.data_dir)
 
     def execute_query(self, query):
         key = query.strip().lower().rstrip('.!?')
@@ -59,12 +61,9 @@ class Jarvis:
             return 'Try “remember that: your note” to save it locally.'
         match = re.fullmatch(r'remember (?:that|this)\s*:?\s+(.+)', query, re.I)
         if match:
-            with (self.data_dir / 'notes.txt').open('a', encoding='utf-8') as file:
-                file.write(f'[{datetime.now():%Y-%m-%d %H:%M}] {match[1]}\n')
-            return 'Saved your note.'
+            return self.notes.save(match[1])
         if key in ('do you remember anything', 'what do you remember'):
-            notes = self.data_dir / 'notes.txt'
-            return notes.read_text(encoding='utf-8') if notes.exists() else 'No saved notes yet.'
+            return self.notes.listing()
         if key in ('shutdown', 'shut down', 'restart', 'send email', 'youtube downloader', 'face recognition'):
             return 'That upstream feature is not enabled in this ASUNA version. Type help to see available commands.'
         return None
@@ -102,7 +101,5 @@ class Jarvis:
 
 
 if __name__ == '__main__':
-    from asuna import Asuna, tk
-    root = tk.Tk()
-    Asuna(root)
-    root.mainloop()
+    from asuna import main
+    main()

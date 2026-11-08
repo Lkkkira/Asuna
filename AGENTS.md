@@ -4,6 +4,7 @@
 - This is the user's ASUNA project. Use this repository for future ASUNA changes.
 - The user has requested that completed ASUNA changes be committed and pushed here. Run relevant checks before pushing. Preserve remote changes and never force-push without explicit authorization.
 - Keep conversations, notes, organizer data, screenshots, credentials, and local environments out of Git. User-generated data lives under data/.
+- Everyday controls/state changes require tests/verify_everyday.py and tests/verify_control_center.py using the local environment (PDF checks require requirements-assistant.txt). Preserve legacy notes, archive rather than silently delete, and keep saved changes atomic. Restore must validate all payloads before writing and create a safety backup. Never include Chrome cookies/profile contents, pairing secrets or model weights in backups. Stop must retain completed actions and prevent later actions; all cancellation/model/voice tests use temporary data and mocked audio.
 - Keep the upstream MIT license and attribution intact.
 - Entry point: asuna.py; launcher: Start ASUNA.bat. Do not wire in legacy import-time speech, camera, email, or network side effects.
 - The user selected Halo / Reactor as the main interface. Keep its animation tied to actual app events and preserve chat, Activity, voice, and Fast/Deep access. For UI/state changes run python tests/verify_reactor.py; microphone/speaker checks must remain mocked.
