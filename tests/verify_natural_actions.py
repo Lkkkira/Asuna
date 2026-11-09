@@ -211,6 +211,29 @@ class NaturalActions(unittest.TestCase):
         self.assertIn(controls,self.app.job_details['job1-s1'])
         self.assertIn(controls,self.app.job_details['job1'])
 
+    def test_user_playback_transcript_recovers_after_connection_failure_without_document_questions(self):
+        with patch('asuna.make_plan') as model,patch('jarvis.open_chrome') as chrome, \
+                patch('browser_control.session.cached',return_value={'url':'','token':'fixture','items':[]}), \
+                patch('browser_control.session.call',side_effect=RuntimeError('The page-control connection is not ready.')):
+            self.app.submit('open youtube and play music')
+            self.wait()
+        self.assertEqual(self.app.youtube_query[0],'music')
+        self.assertEqual(self.statuses(),['Failed'])
+        commands=('play it','the first video u found on youtube','the first video u found on youtube',
+                  'opwn youtube and play the first video','open youtube and play the first video')
+        with patch('asuna.make_plan') as model,patch('jarvis.open_chrome') as chrome, \
+                patch('browser_control.session.cached',return_value={'url':'','token':'fixture','items':[]}), \
+                patch('browser_control.session.call',return_value={'detail':'Media state: playing, unmuted.'}) as browser:
+            for text in commands:
+                self.app.submit(text)
+                self.wait()
+        model.assert_not_called()
+        self.assertEqual(chrome.call_count,len(commands))
+        self.assertTrue(all(c.args==('https://www.youtube.com/results?search_query=music',) for c in chrome.call_args_list))
+        self.assertEqual(browser.call_count,2*len(commands))
+        self.assertTrue(all(s=='Completed' for s in self.statuses()[1:]))
+        self.assertEqual(self.app.history[-1]['content'],'Playing music on YouTube.')
+
     def test_first_video_followup_bypasses_a_prior_clarification_and_never_opens_google(self):
         self.app.pending_request = {'original_request':'Open YouTube','latest_reply':'','question':'Which video?'}
         with patch('asuna.make_plan') as model,patch('jarvis.open_chrome') as chrome, \

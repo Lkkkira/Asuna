@@ -8,6 +8,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from actions import Actions
+from actions import normalize
 from desktop_apps import discord_executable
 from jarvis import Jarvis
 from planner import exact_plan, validate_plan
@@ -93,6 +94,16 @@ class DiscordTypingTests(unittest.TestCase):
             step = exact_plan(text)['steps'][0]
             self.assertEqual((step['tool'],step['text'],step['number']),('browser_open_item',kind,number))
         self.assertEqual(len(exact_plan('play the first video')['steps']),2)
+
+    def test_playback_uses_current_video_or_search_and_only_reuses_an_explicit_recent_query(self):
+        context={'youtube_query':'music','browser':{'url':'https://www.youtube.com/watch?v=fixture'}}
+        self.assertEqual([s['tool'] for s in exact_plan('play it',context=context)['steps']],['browser_media'])
+        context['browser']['url']='https://www.youtube.com/results?search_query=music'
+        self.assertEqual([s['tool'] for s in exact_plan('play it',context=context)['steps']],['browser_open_item','browser_media'])
+        self.assertEqual([s['tool'] for s in exact_plan('open youtube and play the first video')['steps']],['open_site','browser_open_item','browser_media'])
+        self.assertEqual([s['tool'] for s in exact_plan('play it')['steps']],['browser_media'])
+        self.assertEqual(normalize('opwn youtube and play the first video'),'open youtube and play the first video')
+        self.assertEqual(normalize('type: opwn my draft'),'type: opwn my draft')
 
 
 if __name__ == '__main__':

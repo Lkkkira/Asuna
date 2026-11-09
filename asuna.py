@@ -89,6 +89,7 @@ class Asuna:
         self.speech_label = tk.StringVar(value='Speak replies: '+('On' if self.speak_replies.get() else 'Off'))
         self.document = None
         self.pending_request = None
+        self.youtube_query = None
         self.pending_job = None
         self.current_job = None
         self.job_count = 0
@@ -442,6 +443,7 @@ class Asuna:
         self.document = None
         self.pending_request = None
         self.chat.configure(state='normal')
+        self.youtube_query = None
         self.chat.delete('1.0', 'end')
         self.chat.configure(state='disabled')
         self.say('ASUNA', 'Fresh conversation. Earlier messages are in History. Document detached. Your notes, tasks and reminders are still available.')
@@ -553,6 +555,7 @@ class Asuna:
                 'archived_memory_ids': [m['id'] for m in self.personal.memories(True)],
                 'routines': self.personal.state['routines'][-30:], 'history_count': len(self.history),
                 'browser': browser_session.cached(),
+                'youtube_query':self.youtube_query[0] if self.youtube_query and time.monotonic()-self.youtube_query[1]<1800 else '',
                 'notes':[{'id':n['id'],'title':n['text'][:100],'archived':n['archived']} for n in self.notes.state['notes'][-50:]],
                 'shortcuts':[{'name':s['name'],'kind':s['kind']} for s in self.actions.shortcuts.state['items'] if s['enabled']],
                 'clarification': self.pending_request}
@@ -584,7 +587,7 @@ class Asuna:
             context = context or {}
             self.check_cancelled()
             # A complete new command takes precedence over an older clarification.
-            plan = exact_plan(normalize(text),context.get('shortcuts',()))
+            plan = exact_plan(normalize(text),context.get('shortcuts',()),context=context)
             if plan is None:
                 self.events.put(('stage', 'Understanding your request with the local model…'))
                 model = model or self.models['Fast']
@@ -622,6 +625,8 @@ class Asuna:
                     self.events.put(('plan_failed', (state,visible,brief_error(exc),detail)))
                     return
                 results.append(result.detail)
+                if action['tool']=='search_youtube':
+                    self.events.put(('youtube_query',action['text']))
                 replies.append('Read the current page.' if plan['needs_reply'] and action['tool']=='browser_read' else result.message)
                 speech.append(result.spoken)
                 if result.reference:
@@ -914,6 +919,8 @@ class Asuna:
                         self.pending_job = None
                 elif kind == 'attached':
                     self.document = value
+                elif kind=='youtube_query':
+                    self.youtube_query = (value,time.monotonic())
                 elif kind == 'action_summary':
                     self.say('ASUNA', value,speech='')
                 elif kind == 'plan_failed':

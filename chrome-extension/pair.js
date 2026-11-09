@@ -1,3 +1,9 @@
+if(location.origin==='http://127.0.0.1:17653'&&location.pathname==='/wake') {
+  chrome.runtime.sendMessage({type:'wake',id:location.hash.slice(1)}).then(response=>{
+    const status=document.getElementById('status');
+    if(status)status.textContent=response?.error||'Reconnected. You can return to ASUNA.';
+  }).catch(()=>{const status=document.getElementById('status');if(status)status.textContent='Reload ASUNA Browser Companion 1.2.0 in chrome://extensions, then try again.';});
+}
 if (location.origin === 'http://127.0.0.1:17653' && location.pathname === '/connect') {
   const token = location.hash.slice(1);
   const button = document.getElementById('connect');

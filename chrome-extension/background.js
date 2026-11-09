@@ -3,6 +3,7 @@ importScripts('page.js');
 const BASE = 'http://127.0.0.1:17653';
 const ACTIONS = new Set(['open','read','open_item','click','fill','search','approve','back','forward','reload','scroll','find','tabs','switch_tab','media']);
 let polling = false;
+let pollingRestartRequested = false;
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 const uuid = () => crypto.randomUUID().replaceAll('-', '');
 const videoLikeIntent = text => ['like video','like the video','like this video','like that video'].includes(text.trim().toLowerCase());
@@ -19,8 +20,8 @@ function webURL(value) {
 }
 async function api(path, body, token) {
   const response = await fetch(BASE + path, {method:'POST', headers:{'Authorization':'Bearer ' + token,'Content-Type':'application/json'},
-    body:JSON.stringify(body), signal:AbortSignal.timeout(22000)});
-  if (!response.ok) throw Error('ASUNA is unavailable or needs pairing.');
+    body:JSON.stringify({...body,version:chrome.runtime.getManifest().version}), signal:AbortSignal.timeout(22000)});
+  if (!response.ok) {const error=Error('ASUNA is unavailable or needs pairing.');error.status=response.status;throw error;}
   return response.json();
 }
 async function pageFunction(tab, func, args) {
@@ -165,27 +166,69 @@ async function perform(job) {
   const snapshot = await observe();
   return {detail:outcome || describe(snapshot),snapshot};
 }
+function kickPolling() {
+  if(polling){pollingRestartRequested=true;return;}
+  startPolling();
+}
 async function startPolling() {
   if (polling) return;
   polling = true;
+  let failures=0;
   try {
     while (true) {
       const {pairing} = await chrome.storage.local.get('pairing');
       if (!pairing?.token) return;
       try {
         const {job} = await api('/poll',{},pairing.token);
-        if ((await chrome.storage.local.get('pairing')).pairing?.token !== pairing.token) return;
+        failures=0;
+        if ((await chrome.storage.local.get('pairing')).pairing?.token !== pairing.token) continue;
         if (!job) continue;
         let reply;
         try { reply = {id:job.id,result:await perform(job)}; }
         catch (e) { reply = {id:job.id,error:String(e.message || e)}; }
         // A lost acknowledgement never causes an action to run again.
-        await api('/result',reply,pairing.token);
-      } catch (_) { return; } // The alarm reconnects later without an idle busy loop.
+        // Retry only delivery of this result; never perform the job again.
+        for(let attempt=0;attempt<3;attempt++) {
+          try {await api('/result',reply,pairing.token);break;}
+          catch(error) {if(error.status===403||attempt===2)throw error;await sleep(500*(attempt+1));}
+        }
+      } catch (error) {
+        const current=(await chrome.storage.local.get('pairing')).pairing?.token;
+        if(!current)return;
+        if(current!==pairing.token) {failures=0;continue;}
+        if(error.status===403)return; // Manual pairing is required; keep the stored choice intact.
+        if(++failures>4)return; // A persistent alarm or an explicit wake reconnects after a longer outage.
+        await sleep(Math.min(500*2**(failures-1),4000));
+      }
     }
-  } finally { polling = false; }
+  } finally {
+    polling = false;
+    if(pollingRestartRequested){pollingRestartRequested=false;startPolling();}
+  }
 }
 chrome.runtime.onMessage.addListener((message,sender,reply) => {
+  if(message.type==='wake') {
+    const popup=sender.url===chrome.runtime.getURL('popup.html');
+    const source=new URL(sender.tab?.url||'about:blank');
+    const local=source.origin===BASE&&source.pathname==='/wake'&&/^[a-f0-9]{32}$/.test(message.id||'')&&source.hash==='#'+message.id;
+    if(!popup&&!local){reply({error:'Open reconnect from ASUNA.'});return;}
+    (async()=>{
+      try {
+        const {pairing}=await chrome.storage.local.get('pairing');
+        if(!pairing?.token){reply({error:'Not paired yet. In ASUNA, type connect browser.'});return;}
+        if(local) {
+          // Restore the previously active webpage before ASUNA can dispatch a control command.
+          const tab=await chrome.tabs.get(sender.tab.id);
+          if(tab.url!==source.href)throw Error('The reconnect tab changed.');
+          await chrome.tabs.remove(tab.id);
+          await api('/wake',{id:message.id},pairing.token);
+        }
+        kickPolling();
+        reply({ok:true});
+      } catch(error) {reply({error:'Keep ASUNA open. If reconnect fails, use connect browser to pair again.'});}
+    })();
+    return true;
+  }
   if (message.type === 'disconnect' && sender.url === chrome.runtime.getURL('popup.html')) {
     (async () => {
       const {pairing} = await chrome.storage.local.get('pairing');
@@ -206,12 +249,17 @@ chrome.runtime.onMessage.addListener((message,sender,reply) => {
       const paired = await api('/pair',{},message.token);
       await chrome.storage.local.set({pairing:{token:paired.token}});
       await chrome.storage.session.remove('control');
-      startPolling(); reply({ok:true});
+      kickPolling(); reply({ok:true});
     } catch (_) { reply({error:'Keep ASUNA running, then type connect browser again.'}); }
   })();
   return true;
 });
-chrome.alarms.onAlarm.addListener(() => startPolling());
-chrome.runtime.onStartup.addListener(() => startPolling());
-chrome.runtime.onInstalled.addListener(() => {chrome.alarms.create('asunaReconnect',{periodInMinutes:.5}); startPolling();});
-startPolling();
+async function boot() {
+  // Alarms may be cleared on browser restarts; re-establish this on every worker start.
+  if(!await chrome.alarms.get('asunaReconnect'))await chrome.alarms.create('asunaReconnect',{periodInMinutes:.5});
+  kickPolling();
+}
+chrome.alarms.onAlarm.addListener(alarm => {if(alarm.name==='asunaReconnect')kickPolling();});
+chrome.runtime.onStartup.addListener(boot);
+chrome.runtime.onInstalled.addListener(boot);
+boot();

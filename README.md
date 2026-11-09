@@ -15,7 +15,17 @@ A personal Windows assistant with a chat interface, local Ollama models, and exp
 
 4. Double-click **Start ASUNA.bat**, or run `python asuna.py`.
 
-The window title is **ASUNA — Reactor · Repo edition · 1.1.2**. Basic text mode uses Python's standard library; the old upstream `requirements.txt` is not needed to run it. Run **Setup ASUNA.bat** once for optional PDF text reading. Optional voice setup is below.
+The window title is **ASUNA — Reactor · Repo edition · 1.2.0**. Basic text mode uses Python's standard library; the old upstream `requirements.txt` is not needed to run it. Run **Setup ASUNA.bat** once for optional PDF text reading. Optional voice setup is below.
+
+## Reliable browser reconnect — 1.2.0
+
+Close/reopen ASUNA and manually reload **ASUNA Browser Companion** once in `chrome://extensions`, in your selected profile. Both versions should show **1.2.0**. Existing valid pairing is retained; there are no new extension permissions. The extension popup also has **Reconnect now**. Pair again with `connect browser` only if the popup reports missing/invalid pairing.
+
+If the page-control connection has gone idle, ASUNA opens a temporary local reconnect tab. The already paired extension closes that tab before acknowledging readiness, so the following command targets the original webpage. Reconnection happens before a new control action is queued. Failed or timed-out actions are never automatically replayed.
+
+The worker now recreates its reconnect alarm at startup, retries transient connection failures briefly, and continues correctly if pairing changes while an old poll is pending. A lost result acknowledgement can resend that result without performing the action again. This follows Chrome's documented [worker lifecycle](https://developer.chrome.com/docs/extensions/develop/concepts/service-workers/lifecycle) and [alarm persistence guidance](https://developer.chrome.com/docs/extensions/reference/api/alarms).
+
+`play it`, `the first video u found on youtube`, and `open youtube and play the first video` now use browser actions directly. A successful YouTube search is remembered for up to 30 minutes within the open chat, so an explicit playback follow-up can repeat that search and continue after a connection failure. New chat clears this context. `opwn` is accepted as a leading typo for `open`; draft text is unchanged. Connection failures are reported as connection failures rather than document questions or claims that browser access is unavailable.
 
 ## Short action replies — 1.1.2
 
@@ -42,7 +52,7 @@ Open **Settings** to choose Fast/Deep models, reply length and style, add your o
 - Daily local backups, validation before restoring, a safety backup before replacement, and a separate **Restore ASUNA Backup.bat** help recover saved data. Backup files contain personal information and stay out of Git.
 - **Check ASUNA.bat** helps diagnose Ollama, models, Chrome, PDF and voice setup. New launches prevent two copies from writing the same data.
 
-For the original development computer, close the old ASUNA window and reopen **Start ASUNA.bat** to load this update. In your selected Chrome profile, manually reload **ASUNA Browser Companion** in `chrome://extensions` once; it should show **1.1.0**. If its popup is disconnected, type `connect browser` in ASUNA and complete pairing. Your chosen profile remains saved locally.
+For the original development computer, close the old ASUNA window and reopen **Start ASUNA.bat** to load the current update. In your selected Chrome profile, manually reload **ASUNA Browser Companion** in `chrome://extensions` once; it should show **1.2.0**. Use **Reconnect now** in its popup for existing pairing. Pair through `connect browser` only if it reports missing/invalid pairing. Your chosen profile remains saved locally.
 
 See [the everyday assistant guide](PERSONAL-ASSISTANT.md) for examples, backups, recovery and limits.
 
@@ -136,6 +146,7 @@ python tests/verify_discord_typing.py
 python tests/verify_everyday.py
 python tests/verify_control_center.py
 python tests/verify_browser_control.py --live
+python tests/verify_extension_transport.py
 ```
 
 Checks use temporary data and mock app launches, microphone capture, speech playback, and model responses. Voice checks need NumPy and PDF checks need pypdf, available after setup in `.venv-voice`; use that environment's Python for the suites. They do not record a real microphone, play sound, or operate personal browser accounts. Browser fixture suites launch headless Chrome with temporary profiles and local HTML pages. Coverage includes backups/rollback, task/note editing, cancellation, organizer windows and compact layouts as well as the original features. Natural-language routing requires a running Ollama model; exact commands remain available when it is offline. These checks do not establish recognition or model accuracy for every request.

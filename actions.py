@@ -70,6 +70,7 @@ Document reading includes up to 10,000 characters. Scanned PDFs need OCR, which 
 def normalize(text):
     text = re.sub(r'^\s*(?:hey\s+)?asuna[,!:\s]+', '', text, flags=re.I)
     text = re.sub(r'^(?:could you|can you|please)\s+', '', text, flags=re.I)
+    text = re.sub(r'^opwn\b','open',text,flags=re.I)
     return text.strip()
 
 

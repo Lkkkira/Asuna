@@ -19,9 +19,9 @@ const snapshot = token => ({url,title:'Fixture',text:'Untrusted reference text',
 const sandbox = {URL,AbortSignal,crypto:webcrypto,console,setTimeout:fn=>{queueMicrotask(fn);return 1;},
   fetch:async()=>{throw Error('No network in this test');},chrome:{
     storage:{local:storage(pools.local),session:storage(pools.session)},
-    runtime:{getURL:p=>'chrome-extension://'+'a'.repeat(32)+'/'+p,
+    runtime:{getManifest:()=>({version:'1.2.0'}),getURL:p=>'chrome-extension://'+'a'.repeat(32)+'/'+p,
       onMessage:{addListener:fn=>listeners.message=fn},onInstalled:{addListener(){}},onStartup:{addListener(){}}},
-    alarms:{create(){},onAlarm:{addListener(){}}},windows:{update:async()=>{}},
+    alarms:{get:async()=>null,create:async()=>{},onAlarm:{addListener(){}}},windows:{update:async()=>{}},
     tabs:{query:async()=>[current()],get:async()=>current(),
       create:async options=>{url=options.url;return current();},
       update:async id=>{activeId=id;return current();},goBack:async()=>{},goForward:async()=>{},reload:async()=>{}},
@@ -119,5 +119,8 @@ const run = (action,text='',number=0)=>sandbox.perform({action,text,number});
   let pairingReply;
   listeners.message({type:'pair',token:'1'.repeat(64)},{tab:{url:'https://evil.test/connect#'+'1'.repeat(64)}},v=>pairingReply=v);
   assert.match(pairingReply.error,/Open the connection page/);
+  let wakeReply;
+  listeners.message({type:'wake',id:'1'.repeat(32)},{tab:{id:1,url:'https://evil.test/wake#'+'1'.repeat(32)}},v=>wakeReply=v);
+  assert.match(wakeReply.error,/Open reconnect from ASUNA/);
   console.log('PASS: extension reviews, single-use approvals, page/tab changes, fields, links, pairing origin and allowlist.');
 })().catch(error=>{console.error(error);process.exitCode=1;});

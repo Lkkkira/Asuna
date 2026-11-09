@@ -21,6 +21,10 @@ button{background:#68e7ec;border:0;padding:14px 24px;font:inherit;cursor:pointer
 <p>Load the ASUNA Browser Companion extension in this profile first. Then press Connect.
 ASUNA can read and act on ordinary webpages when you ask. Browser traffic stays on this computer.</p>
 <button id="connect">Connect ASUNA</button><p id="status">Waiting for you.</p>'''
+WAKE_HTML = '''<!doctype html><meta charset="utf-8"><title>Reconnecting ASUNA</title>
+<style>body{background:#080e17;color:#edf5ff;font:18px system-ui;max-width:650px;margin:10vh auto;padding:24px}</style>
+<h1>Reconnecting your Chrome profile</h1><p id="status">Waking ASUNA Browser Companion…</p>
+<p>This temporary tab closes when your existing connection resumes. No page action has run yet.</p>'''
 
 
 class ProfileBridge:
@@ -29,6 +33,10 @@ class ProfileBridge:
         self.port = port
         self.lock = threading.Lock()
         self.command_lock = threading.Lock()
+        self.wake_lock = threading.Lock()
+        self.wake_id = None
+        self.wake_event = threading.Event()
+        self.extension_version = None
         self.jobs = queue.Queue()
         self.pending = {}
         self.server = self.thread = None
@@ -63,18 +71,21 @@ class ProfileBridge:
 
                 def reply(self, code, value, content_type='application/json'):
                     body = value.encode() if isinstance(value, str) else json.dumps(value).encode()
-                    self.send_response(code)
-                    origin = self.headers.get('Origin', '')
-                    if re.fullmatch(r'chrome-extension://[a-p]{32}', origin):
-                        self.send_header('Access-Control-Allow-Origin', origin)
-                        self.send_header('Vary', 'Origin')
-                    self.send_header('Content-Type', content_type)
-                    self.send_header('Content-Length', str(len(body)))
-                    self.send_header('Cache-Control', 'no-store')
-                    self.send_header('X-Content-Type-Options', 'nosniff')
-                    self.send_header('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'")
-                    self.end_headers()
-                    self.wfile.write(body)
+                    try:
+                        self.send_response(code)
+                        origin = self.headers.get('Origin', '')
+                        if re.fullmatch(r'chrome-extension://[a-p]{32}', origin):
+                            self.send_header('Access-Control-Allow-Origin', origin)
+                            self.send_header('Vary', 'Origin')
+                        self.send_header('Content-Type', content_type)
+                        self.send_header('Content-Length', str(len(body)))
+                        self.send_header('Cache-Control', 'no-store')
+                        self.send_header('X-Content-Type-Options', 'nosniff')
+                        self.send_header('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'")
+                        self.end_headers()
+                        self.wfile.write(body)
+                    except (BrokenPipeError,ConnectionResetError,ConnectionAbortedError):
+                        pass  # Chrome can close an idle poll while the app or worker restarts.
 
                 def valid_host(self):
                     return self.headers.get('Host') == f'127.0.0.1:{bridge.port}'
@@ -93,6 +104,8 @@ class ProfileBridge:
                         return self.reply(403, {'error': 'Invalid host.'})
                     if self.path == '/connect':
                         return self.reply(200, CONNECT_HTML, 'text/html; charset=utf-8')
+                    if self.path == '/wake':
+                        return self.reply(200, WAKE_HTML, 'text/html; charset=utf-8')
                     return self.reply(404, {'error': 'Not found.'})
 
                 def do_POST(self):
@@ -114,7 +127,8 @@ class ProfileBridge:
                             (is_pair and time.monotonic() > bridge.pair_deadline)):
                         return self.reply(403, {'error': 'Pair the ASUNA extension in your selected profile.'})
                     if self.path == '/status':
-                        return self.reply(200, {'connected': bridge.connected() and bridge.origin == origin})
+                        return self.reply(200, {'connected': bridge.connected() and bridge.origin == origin,
+                                                'extension_version':bridge.extension_version})
                     with bridge.lock:
                         current_secret = bridge.pair_code if is_pair else bridge.token
                         if (bridge.closed or not current_secret or
@@ -131,8 +145,18 @@ class ProfileBridge:
                             return self.reply(403, {'error': 'Another extension is already paired.'})
                         bridge.origin = origin
                         bridge.last_seen = time.monotonic()
+                        version = body.get('version')
+                        if isinstance(version,str) and re.fullmatch(r'\d{1,3}(?:\.\d{1,3}){1,3}',version):
+                            bridge.extension_version = version
                     if self.path == '/pair':
                         return self.reply(200, {'ok': True, 'token': bridge.token})
+                    if self.path == '/wake':
+                        with bridge.lock:
+                            if not bridge.wake_id or body.get('id')!=bridge.wake_id:
+                                return self.reply(403,{'error':'Open a fresh reconnect page from ASUNA.'})
+                            bridge.wake_id = None
+                            bridge.wake_event.set()
+                        return self.reply(200,{'ok':True})
                     if self.path == '/disconnect':
                         with bridge.lock:
                             bridge.origin = None
@@ -156,6 +180,8 @@ class ProfileBridge:
                                 job = bridge.jobs.get(timeout=1)
                         except queue.Empty:
                             job = None
+                        if bridge.closed:
+                            return self.reply(503,{'error':'ASUNA is restarting.'})
                         # A previous profile's in-flight poll cannot take a new job after pairing changes.
                         if not hmac.compare_digest(authorization, 'Bearer ' + bridge.token) or not bridge.connected():
                             if job:
@@ -185,7 +211,7 @@ class ProfileBridge:
             self.thread.start()
 
     def connected(self):
-        return bool(self.origin and time.monotonic() - self.last_seen < 25)
+        return bool(not self.closed and self.origin and time.monotonic() - self.last_seen < 25)
 
     def cached(self):
         with self.lock:
@@ -204,9 +230,8 @@ class ProfileBridge:
         if action not in ALLOWED or not isinstance(text, str) or len(text) > 16000 or type(number) is not int:
             raise ValueError('Unsupported browser command.')
         self.start()
-        if not self.connected():
-            raise RuntimeError('The page-control connection is not ready. Type connect browser in ASUNA, then click the Connect ASUNA button INSIDE the Chrome page that opens. Opening the tab alone does not connect it. Load ASUNA Browser Companion first if needed.')
         with self.command_lock:
+            self.ensure_connected()
             ticket = secrets.token_hex(16)
             future = concurrent.futures.Future()
             with self.lock:
@@ -227,6 +252,26 @@ class ProfileBridge:
                     self.cache = snapshot
             return result
 
+    def ensure_connected(self):
+        """Wake an already paired extension before queuing a new action; never retry an action."""
+        self.start()
+        with self.wake_lock:
+            if self.connected():return
+            from browser_profile import settings,launch
+            profile = settings(self.data)
+            if profile:
+                with self.lock:
+                    self.wake_event.clear()
+                    self.wake_id = secrets.token_hex(16)
+                    wake_id = self.wake_id
+                try:
+                    launch(f'http://127.0.0.1:{self.port}/wake#'+wake_id,profile)
+                    # The authenticated acknowledgement arrives only after the temporary tab closes.
+                    if self.wake_event.wait(8) and not self.closed and self.connected():return
+                finally:
+                    with self.lock:self.wake_id = None
+            raise RuntimeError('The page-control connection is not ready. Reload ASUNA Browser Companion 1.2.0 in your selected Chrome profile. If it is not paired, type connect browser and click Connect ASUNA inside that page. No page-control action was sent.')
+
     def connect(self, profile):
         from browser_profile import launch
         self.start()
@@ -241,6 +286,7 @@ class ProfileBridge:
 
     def close(self):
         self.closed = True
+        self.wake_event.set()
         with self.lock:
             for future in self.pending.values():
                 if not future.done():

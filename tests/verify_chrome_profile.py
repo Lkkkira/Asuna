@@ -140,6 +140,30 @@ class BridgeTests(unittest.TestCase):
         self.pair()
         self.assertTrue(self.post('/status')[1]['connected'])
 
+    def test_wake_requires_the_paired_origin_and_a_current_single_use_nonce(self):
+        self.pair()
+        self.bridge.wake_id='c'*32
+        for args in ({'token':'wrong'},{'origin':'https://evil.test'}):
+            self.assertEqual(self.post('/wake',{'id':'c'*32},**args)[0],403)
+        self.assertEqual(self.post('/wake',{'id':'d'*32})[0],403)
+        self.assertFalse(self.bridge.wake_event.is_set())
+        self.assertEqual(self.post('/wake',{'id':'c'*32,'version':'1.2.0'})[0],200)
+        self.assertTrue(self.bridge.wake_event.is_set())
+        self.assertEqual(self.bridge.extension_version,'1.2.0')
+        self.assertEqual(self.post('/wake',{'id':'c'*32})[0],403)
+        self.assertTrue(self.bridge.jobs.empty())
+
+    def test_failed_wake_does_not_dispatch_or_retry_a_page_action(self):
+        with patch('browser_profile.settings',return_value={'profile_directory':'Profile 1'}), \
+                patch('browser_profile.launch') as launch,patch.object(self.bridge.wake_event,'wait',return_value=False):
+            with self.assertRaisesRegex(RuntimeError,'No page-control action was sent'):
+                self.bridge.call('click','Submit')
+        launch.assert_called_once()
+        self.assertIn('/wake#',launch.call_args.args[0])
+        self.assertIsNone(self.bridge.wake_id)
+        self.assertEqual(self.bridge.pending,{})
+        self.assertTrue(self.bridge.jobs.empty())
+
     def test_connect_reports_existing_pairing_or_explains_the_actual_page_button(self):
         self.pair()
         token = self.bridge.token

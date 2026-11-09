@@ -61,6 +61,9 @@ or an explicit supplied URL, otherwise search_web for NAME. Do not merely open t
 Do not invent a website address. A search is a fallback for a requested browser target, not for failed clicks,
 form submissions, account changes or other side effects. Do not automatically retry those actions.
 Opening Chrome alone does not fulfill a request to open a named website. Preserve the destination in compound requests too.
+Browser tools can fetch the current page. Do not claim you lack browser access or ask for a document when the user
+says play it or selects a video. A dropped connection is an action error, not a request for a title/URL.
+context.youtube_query records only the most recent successful YouTube search action; use it for explicit playback follow-ups.
 For 'open YouTube and play music', search_youtube text='music', then browser_open_item text='video' number=1,
 then browser_media text='play'. Bare 'first video' means browser_open_item text='video' number=1 on the current page.
 search_web/search_youtube/search_maps/search_wikipedia: text the search terms. These open
@@ -302,6 +305,34 @@ def youtube_play_plan(text):
     return validate_plan(plan_of(step('search_youtube',query.strip()),step('browser_open_item','video',1),step('browser_media','play')))
 
 
+def browser_playback_followup(text,context):
+    """Resolve current-browser playback and explicit selections without asking a chat model."""
+    key = text.lower().strip().rstrip('.!?')
+    context = context or {}
+    query = context.get('youtube_query','')
+    query = query if isinstance(query,str) and len(query)<=4000 else ''
+    page = urlparse((context.get('browser') or {}).get('url',''))
+    on_youtube = page.hostname=='youtube.com' or bool(page.hostname and page.hostname.endswith('.youtube.com'))
+    if key in ('play it','play that','play this','resume it','start playing'):
+        if on_youtube and page.path=='/results':
+            return plan_of(step('browser_open_item','video',1),step('browser_media','play'))
+        if on_youtube and (page.path=='/watch' or page.path.startswith(('/shorts/','/live/'))):
+            return plan_of(step('browser_media','play'))
+        if query:
+            return plan_of(step('search_youtube',query),step('browser_open_item','video',1),step('browser_media','play'))
+        return plan_of(step('browser_media','play'))
+    ordinal = r'(first|second|third|fourth|fifth|\d+)'
+    match = re.fullmatch(r'(?:open|launch|start)\s+youtube(?:\s+in\s+(?:chrome|crome|browser))?\s+(?:and|then|and then)\s+(?:open|play)\s+(?:the\s+)?'+ordinal+r'\s+video',key)
+    if not match:
+        match = re.fullmatch(r'(?:(?:open|play)\s+)?(?:the\s+)?'+ordinal+r'\s+video(?:\s+(?:that\s+)?(?:u|you)\s+(?:found|searched|showed))?\s+(?:on|from|in)\s+youtube',key)
+    if not match:return None
+    number = {'first':1,'second':2,'third':3,'fourth':4,'fifth':5}.get(match[1],int(match[1]) if match[1].isdigit() else 0)
+    steps = [step('browser_open_item','video',number),step('browser_media','play')]
+    if on_youtube and page.path=='/results':return validate_plan(plan_of(*steps))
+    if query:return validate_plan(plan_of(step('search_youtube',query),*steps))
+    return validate_plan(plan_of(*([] if on_youtube else [step('open_site','youtube')]),*steps))
+
+
 def preserve_requested_destination(plan,text):
     """A model must not replace an explicit site destination with an empty browser."""
     if plan['kind']!='actions' or re.search(r"\b(?:instead|rather than|don['’]t|do not)\b",text,re.I):return plan
@@ -323,9 +354,11 @@ def preserve_requested_destination(plan,text):
     return plan
 
 
-def exact_plan(text,shortcuts=()):
+def exact_plan(text,shortcuts=(),context=None):
     """Known command syntax works without model inference or an Ollama connection."""
     key = text.lower().rstrip('.!?')
+    followup = browser_playback_followup(text,context)
+    if followup:return followup
     playback = youtube_play_plan(text)
     if playback:return playback
     match = re.fullmatch(r'(?:open|launch|start) (.+)',key)

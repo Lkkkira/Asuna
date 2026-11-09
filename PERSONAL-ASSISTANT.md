@@ -1,4 +1,4 @@
-# ASUNA 1.1.2 — everyday use
+# ASUNA 1.2.0 — everyday use
 
 ASUNA is a free local Windows assistant. Ollama supplies conversation and natural-language planning; exact commands, organizer data and utilities also work when Ollama is unavailable. Website services still need internet. No paid API key is required.
 
@@ -6,7 +6,7 @@ ASUNA is a free local Windows assistant. Ollama supplies conversation and natura
 
 1. Close old ASUNA windows and reopen **Start ASUNA.bat**. Existing data stays under `data/`.
 2. Run **Setup ASUNA.bat** once if you want selectable-text PDF attachments. On the original development computer this package is already installed.
-3. In your chosen Chrome profile, open `chrome://extensions` and manually reload **ASUNA Browser Companion**. It should show **1.1.0**. Use `connect browser` if the extension popup reports disconnected.
+3. In your chosen Chrome profile, open `chrome://extensions` and manually reload **ASUNA Browser Companion**. It should show **1.2.0**. Keep valid pairing; use the popup's **Reconnect now** first. Use `connect browser` if pairing is missing or invalid.
 4. Open **Settings → Check setup**. It checks local services without recording audio or changing accounts.
 
 ## Your main controls
@@ -36,6 +36,10 @@ Successful browser work gets a short acknowledgement, such as “Playing music o
 For website control, use `read page`, `open the first result`, `click` with an exact displayed label/ID, or `type: your draft`. `type Discord in the search box` selects the page's search field. Ordinary field entry is reviewed and does not automatically press Enter or send. Use the explicit site-search command when you want a search submitted. Generic buttons and sensitive links also require review. Login, passwords, payment details, CAPTCHAs, browser permission prompts and native dialogs remain manual. See [browser details](BROWSER.md).
 
 When pairing, type `connect browser` and click **Connect ASUNA inside the Chrome tab**, then wait for **Connected**. The tab opening by itself is not a completed connection.
+
+After first setup, an idle connection can resume through a temporary local reconnect tab that closes before a page-control action is sent. The popup's **Reconnect now** also wakes the existing connection without changing its secret. Reconnection does not automatically repeat an action whose result was uncertain.
+
+Follow-ups such as `play it`, `the first video u found on youtube`, and `open youtube and play the first video` are browser commands. ASUNA can reuse the most recent successful YouTube search from this chat for 30 minutes when you explicitly ask to continue playback. It does not automatically retry likes, messages or forms. New chat clears the recent search context.
 
 ## Tasks, notes and daily tools
 
